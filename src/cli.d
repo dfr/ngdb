@@ -1892,6 +1892,11 @@ class InfoCommand: Command
 	    return "info";
 	}
 
+        string shortName()
+        {
+            return "i";
+        }
+
 	string description()
 	{
 	    return "Print information";
