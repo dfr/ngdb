@@ -110,6 +110,19 @@ class Command
     {
 	return true;
     }
+
+    /**
+     * Support for .sort.
+     */
+    int opCmp(Object obj)
+    {
+        Command c = cast(Command) obj;
+        if (c) {
+            return std.string.cmp(name, c.name);
+        } else {
+            return -1;
+        }
+    }
 }
 
 class CommandTable
@@ -265,9 +278,9 @@ private class Breakpoint: TargetBreakpointListener
 	    }
 	}
 	writefln("Stopped at breakpoint %d", id);
-	if (command_) {
+	if (commands_) {
 	    db_.stopped();
-	    db_.executeCommand(command);
+	    db_.executeMacro(commands);
 	}
 	return true;
     }
@@ -306,14 +319,14 @@ private class Breakpoint: TargetBreakpointListener
 	}
     }
 
-    string command()
+    string[] commands()
     {
-	return command_;
+	return commands_;
     }
 
-    void command(string s)
+    void commands(string[] cmds)
     {
-	command_ = s;
+	commands_ = cmds;
     }
 
     void activate(TargetModule mod)
@@ -454,15 +467,15 @@ private class Breakpoint: TargetBreakpointListener
 	}
 	if (condition_)
 	    writefln("\tstop only if %s", condition_);
-	if (command_)
-	    writefln("\t%s", command_);
+        foreach (cmd; commands_)
+	    writefln("\t%s", cmd);
     }
 
     SourceFile sf_;
     uint line_;
     string func_;
     string condition_;
-    string command_;
+    string[] commands_;
     Expr expr_;
     bool enabled_ = true;
     Debugger db_;
@@ -755,6 +768,12 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	    cmds ~= line;
 	}
 	return cmds;
+    }
+
+    string[] readStatementBody()
+    {
+        string s;
+        return readStatementBody(null, s);
     }
 
     void run()
@@ -1437,11 +1456,11 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		bp.condition = cond;
     }
 
-    void setBreakpointCommand(uint bpid, string cmd)
+    void setBreakpointCommands(uint bpid, string[] cmds)
     {
 	foreach (bp; breakpoints_)
 	    if (bp.id == bpid)
-		bp.command = cmd;
+		bp.commands = cmds;
     }
 
     void enableBreakpoint(uint bpid)
@@ -1872,8 +1891,8 @@ class HelpCommand: Command
 
 	void run(Debugger db, string args)
 	{
-	    foreach (c; db.commands_.list_)
-		db.pagefln("%s: %s", c.name, c.description);
+	    foreach (c; db.commands_.list_.values.sort)
+		db.pagefln("%-16s%s", c.name, c.description);
 	}
     }
 }
@@ -1890,6 +1909,11 @@ class InfoCommand: Command
 	{
 	    return "info";
 	}
+
+        string shortName()
+        {
+            return "i";
+        }
 
 	string description()
 	{
@@ -2293,15 +2317,18 @@ class CommandCommand: Command
 
 	void run(Debugger db, string args)
 	{
-	    int i = find(args, ' ');
-	    if (i < 0) {
-		db.pagefln("usage: command <id> [command]");
+	    if (args.length == 0 || find(args, ' ') >= 0) {
+		db.pagefln("usage: command <id>");
 		return;
 	    }
 	    try {
-		string num = args[0..i];
-		string cmd = strip(args[i..$]);
-		db.setBreakpointCommand(toUint(num), cmd);
+                auto num = toUint(args);
+                if (db.interactive)
+                    db.pagefln(
+                      "Enter commands for breakpoint #%d, finish with \"end\"",
+                      num);
+		string[] cmds = db.readStatementBody;
+		db.setBreakpointCommands(num, cmds);
 	    } catch (ConvError ce) {
 		db.pagefln("Can't parse breakpoint ID");
 	    }
@@ -3179,8 +3206,7 @@ class DefineCommand: Command
 	    if (db.interactive)
 		db.pagefln("Enter commands for \"%s\", finish with \"end\"",
 			   args);
-	    string line, junk;
-	    string[] cmds = db.readStatementBody(null, junk);
+	    string[] cmds = db.readStatementBody;
 	    Debugger.registerCommand(new MacroCommand(args, cmds));
 	}
     }
@@ -3304,7 +3330,7 @@ class IfCommand: Command
 	    string[] ifCmds = db.readStatementBody("else", endString);
 	    string[] elseCmds;
 	    if (endString == "else")
-		elseCmds = db.readStatementBody("", endString);
+		elseCmds = db.readStatementBody;
 
 	    if (cond)
 		db.executeMacro(ifCmds);
@@ -3339,8 +3365,7 @@ class WhileCommand: Command
 		return;
 	    }		
 
-	    string endString;
-	    string[] cmds = db.readStatementBody("", endString);
+	    string[] cmds = db.readStatementBody;
 
 	    for (;;) {
 		bool cond = false;
