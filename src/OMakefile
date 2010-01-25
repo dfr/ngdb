@@ -1,0 +1,38 @@
+objs[]=
+	main
+	cli
+	editline
+	endian
+	debuginfo/debuginfo
+	debuginfo/dwarf
+	debuginfo/expr
+	debuginfo/language
+	debuginfo/types
+	machine/machine
+	machine/arm
+	machine/armdis
+	machine/x86
+	machine/x86dis
+	objfile/elf
+	objfile/elf32
+	objfile/elf64
+	objfile/objfile
+	target/ptracetarget
+	target/coldtarget
+	target/target
+
+objs[]+=
+	sys/pread
+	sys/ptrace
+	sys/wait
+
+#DFLAGS+= -O
+#DFLAGS+= -debug=breakpoints
+#DFLAGS+= -debug=step
+
+DFLAGS+= -I$(dir $(ROOT)/gtkD/src)
+
+LIBS[]= # $(file $(ROOT)/gtkD/src/libgtkD.a)
+ELIBS[] = edit
+
+.DEFAULT: $(DProgram ngdb.new, $(objs))
