@@ -517,7 +517,8 @@ string signame(int sig)
 
 class PtraceTarget: Target, TargetBreakpointListener
 {
-    this(TargetListener listener, pid_t pid, string execname, int status)
+    this(TargetListener listener, pid_t pid, string execname, int status,
+        bool attaching)
     {
 	pid_ = pid;
 	version (linux)
@@ -539,15 +540,17 @@ class PtraceTarget: Target, TargetBreakpointListener
 
 	stopped(status);
 
-	/*
-	 * Continue up to the program entry point (or a user
-	 * breakpoint if that happens first).
-	 */
-	if (modules_[0].entry) {
-	    setBreakpoint(modules_[0].entry, this);
-	    cont(0);
-	    wait;
-	}
+        if (!attaching) {
+            /*
+             * Continue up to the program entry point (or a user
+             * breakpoint if that happens first).
+             */
+            if (modules_[0].entry) {
+                setBreakpoint(modules_[0].entry, this);
+                cont(0);
+                wait;
+            }
+        }
     }
 
     override
@@ -1224,6 +1227,11 @@ class PtraceAttach: TargetFactory
 {
     override
     {
+        static this()
+        {
+            TargetFactory.register(new PtraceAttach);
+        }
+
 	string name()
 	{
 	    return "attach";
@@ -1238,7 +1246,7 @@ class PtraceAttach: TargetFactory
 	    pid = std.string.atoi(args[0]);
 	    PtraceTarget.ptrace(PT_ATTACH, pid, null, 0);
 	    PtraceTarget.waitpid(pid, &status, 0);
-	    return new PtraceTarget(listener, pid, "", status);
+	    return new PtraceTarget(listener, pid, "", status, true);
 	}
     }
 }
@@ -1249,6 +1257,11 @@ class PtraceRun: TargetFactory
 {
     override
     {
+        static this()
+        {
+            TargetFactory.register(new PtraceRun);
+        }
+
 	string name()
 	{
 	    return "run";
@@ -1304,7 +1317,7 @@ class PtraceRun: TargetFactory
 		PtraceTarget.waitpid(pid, &status, 0);
 		debug (ptrace)
 		    writefln("done");
-		return new PtraceTarget(listener, pid, execpath, status);
+		return new PtraceTarget(listener, pid, execpath, status, false);
 	    } else {
 		/*
 		 * This is the child process. We tell the kernel we
