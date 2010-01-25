@@ -118,11 +118,7 @@ class Command
     {
         Command c = cast(Command) obj;
         if (c) {
-            if (name < c.name)
-                return -1;
-            if (name == c.name)
-                return 0;
-            return 1;
+            return std.string.cmp(name, c.name);
         } else {
             return -1;
         }
