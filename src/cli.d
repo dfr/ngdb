@@ -514,6 +514,11 @@ private class SourceFile
 	return lines_[lineno - 1];
     }
 
+    size_t length()
+    {
+        return lines_.length;
+    }
+
     string filename()
     {
 	return filename_;
@@ -3155,6 +3160,64 @@ class ListCommand: Command
 
     SourceFile sourceFile_;
     uint sourceLine_;
+}
+
+class SearchCommand: Command
+{
+    static this()
+    {
+	Debugger.registerCommand(new SearchCommand);
+    }
+
+    override {
+	string name()
+	{
+	    return "search";
+	}
+
+	string description()
+	{
+	    return "Search source file contents";
+	}
+
+	void run(Debugger db, string args)
+	{
+	    SourceFile sf = sourceFile_;
+	    uint line = sourceLine_;
+	    if (find(args, ' ') >= 0) {
+		db.pagefln("usage: search [regexp]");
+		return;
+	    }
+	    if (args.length == 0) {
+                if (regexp_.length == 0) {
+                    db.pagefln("No previous search expression");
+                    return;
+                }
+                args = regexp_;
+            }
+
+            while (line < sf.length) {
+                if (std.regexp.find(sf[line], args) >= 0)
+                    break;
+                line++;
+            }
+            if (line == sf.length) {
+                db.pagefln("Not found");
+                return;
+            }
+            db.displaySourceLine(sf, line);
+	    db.setCurrentSourceLine(sf, line);
+	}
+	void onSourceLine(Debugger db, SourceFile sf, uint line)
+	{
+	    sourceFile_ = sf;
+	    sourceLine_ = line;
+	}
+    }
+
+    SourceFile sourceFile_;
+    uint sourceLine_;
+    string regexp_;
 }
 
 class DefineCommand: Command
