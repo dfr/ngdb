@@ -110,6 +110,23 @@ class Command
     {
 	return true;
     }
+
+    /**
+     * Support for .sort.
+     */
+    int opCmp(Object obj)
+    {
+        Command c = cast(Command) obj;
+        if (c) {
+            if (name < c.name)
+                return -1;
+            if (name == c.name)
+                return 0;
+            return 1;
+        } else {
+            return -1;
+        }
+    }
 }
 
 class CommandTable
@@ -1873,8 +1890,8 @@ class HelpCommand: Command
 
 	void run(Debugger db, string args)
 	{
-	    foreach (c; db.commands_.list_)
-		db.pagefln("%s: %s", c.name, c.description);
+	    foreach (c; db.commands_.list_.values.sort)
+		db.pagefln("%-16s%s", c.name, c.description);
 	}
     }
 }
