@@ -133,11 +133,14 @@ class CommandTable
     string parse(string cmd, out string args)
     {
 	string name;
-	int i;
 
-	i = find(cmd, '/');
-	if (i < 0)
-	    i = find(cmd, ' ');
+        int i = -1;
+	int i1 = find(cmd, '/');
+        if (i1 >= 0)
+            i = i1;
+	int i2 = find(cmd, ' ');
+        if (i2 >= 0)
+            i = i < 0 ? i2 : (i2 < i ? i2 : i);
 
 	if (i >= 0) {
 	    name = strip(cmd[0..i]);
