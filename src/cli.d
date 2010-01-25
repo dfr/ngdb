@@ -3103,7 +3103,7 @@ class ListCommand: Command
 	{
 	    uint line = 0;
 	    SourceFile sf = null;
-	    if (args.length > 1) {
+	    if (find(args, ' ') >= 0) {
 		db.pagefln("usage: list [- | <file:line>]");
 		return;
 	    }
