@@ -1835,6 +1835,11 @@ class QuitCommand: Command
 	    return "quit";
 	}
 
+	string shortName()
+	{
+	    return "q";
+	}
+
 	string description()
 	{
 	    return "Exit the debugger";
@@ -2851,6 +2856,11 @@ class PrintCommand: Command
 	string name()
 	{
 	    return "print";
+	}
+
+	string shortName()
+	{
+	    return "p";
 	}
 
 	string description()
