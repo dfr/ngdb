@@ -433,3 +433,35 @@ private:
     string corename_;
     Elffile core_;
 }
+
+class ColdFactory: TargetFactory
+{
+    override
+    {
+        static this()
+        {
+            TargetFactory.register(new ColdFactory);
+        }
+
+	string name()
+	{
+	    return "core";
+	}
+
+	Target connect(TargetListener listener, string[] args)
+	{
+            string execname, corename;
+            
+	    if (args.length < 1)
+		throw new Exception("too few arguments to target core");
+	    if (args.length > 2)
+		throw new Exception("too many arguments to target core");
+
+            execname = args[0];
+            if (args.length == 2)
+                args[1] = corename;
+
+            return new ColdTarget(listener, corename, execname);
+	}
+    }
+}

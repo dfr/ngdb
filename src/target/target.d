@@ -243,18 +243,41 @@ interface Target
 }
 
 /**
- * This interface provides an abstraction to allow creating
+ * An abstraction to allow creating
  * targets or attaching to existing targets.
  */
-interface TargetFactory
+class TargetFactory
 {
     /**
      * Return the name of the target factory (e.g. "process", "core" etc.).
      */
-    char[]			name();
+    abstract char[]		name();
 
     /**
      * Create a new target instance with the given arguments.
      */
-    Target			connect(TargetListener listener, char[][] args);
+    abstract Target		connect(TargetListener listener, char[][] args);
+    /**
+     * Register a target factory
+     */
+    static void register(TargetFactory tf)
+    {
+        factories_ ~= tf;
+    }
+
+    /**
+     * Create a new target.
+     */
+    static Target               connect(string type,
+                                        TargetListener listener,
+                                        string[] args)
+    {
+        foreach (tf; factories_)
+            if (tf.name == type)
+                return tf.connect(listener, args);
+        throw new TargetException("Target type not found");
+    }
+
+private:
+    static TargetFactory[]      factories_;
 }

@@ -1982,6 +1982,53 @@ class RunCommand: Command
     string[] runArgs_;
 }
 
+class TargetCommand: Command
+{
+    static this()
+    {
+	Debugger.registerCommand(new TargetCommand);
+    }
+
+    override {
+	string name()
+	{
+	    return "target";
+	}
+
+	string description()
+	{
+	    return "Attach to a target";
+	}
+
+	void run(Debugger db, string args)
+	{
+            int i = find(args, ' ');
+            if (i < 0) {
+                db.pagefln("usage: target <type> [<args>]");
+                return;
+            }
+
+            string type = args[0..i];
+            args = strip(args[i..$]);
+
+	    if (db.target_ && db.target_.state != TargetState.EXIT) {
+		db.pagefln("Program is already being debugged");
+		return;
+	    }
+	    if (db.target_) {
+		auto target = db.target_;
+		db.onExit(target);
+		//delete target;
+	    }
+
+            TargetFactory.connect(type, db, split(args, " "));
+	    if (db.target_)
+		db.stopped();
+	}
+    }
+    string[] runArgs_;
+}
+
 class KillCommand: Command
 {
     static this()
