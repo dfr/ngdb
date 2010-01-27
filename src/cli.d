@@ -638,6 +638,14 @@ class PagerQuit: Exception
     }
 }
 
+class DebuggerException: Exception
+{
+    this(string msg)
+    {
+        super(msg);
+    }
+}
+
 /**
  * Return a copy of list with all duplicates removed.
  */
@@ -1457,42 +1465,43 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	}
     }
 
-    void setBreakpointCondition(uint bpid, string cond)
+    Breakpoint findBreakpoint(uint bpid)
     {
 	foreach (bp; breakpoints_)
 	    if (bp.id == bpid)
-		bp.condition = cond;
+                return bp;
+        throw new DebuggerException("No such breakpoint");
     }
 
-    void setBreakpointCommands(uint bpid, string[] cmds)
+    Breakpoint findBreakpoint(string bpid)
     {
-	foreach (bp; breakpoints_)
-	    if (bp.id == bpid)
-		bp.commands = cmds;
+        if (bpid.length == 0)
+            return lastBreakpoint;
+
+        uint num;
+        try {
+            num = toUint(bpid);
+        } catch (ConvError ce) {
+            throw new DebuggerException("Can't parse breakpoint ID");
+        }
+        return findBreakpoint(num);
     }
 
-    void enableBreakpoint(uint bpid)
+    Breakpoint lastBreakpoint()
     {
-	foreach (bp; breakpoints_)
-	    if (bp.id == bpid)
-		bp.enable;
+        if (breakpoints_.length > 0)
+            return breakpoints_[$ - 1];
+        throw new DebuggerException("No breakpoints");
     }
 
-    void disableBreakpoint(uint bpid)
-    {
-	foreach (bp; breakpoints_)
-	    if (bp.id == bpid)
-		bp.disable;
-    }
-
-    void deleteBreakpoint(uint bpid)
+    void deleteBreakpoint(Breakpoint bp)
     {
 	Breakpoint[] newBreakpoints;
-	foreach (bp; breakpoints_)
-	    if (bp.id == bpid)
+	foreach (tbp; breakpoints_)
+	    if (tbp == bp)
 		bp.disable;
 	    else
-		newBreakpoints ~= bp;
+		newBreakpoints ~= tbp;
 	breakpoints_ = newBreakpoints;
     }
 
@@ -2341,52 +2350,57 @@ class ConditionCommand: Command
 		db.pagefln("usage: condition <id> [expression]");
 		return;
 	    }
-	    try {
-		string num = args[0..i];
-		string expr = strip(args[i..$]);
-		db.setBreakpointCondition(toUint(num), expr);
-	    } catch (ConvError ce) {
-		db.pagefln("Can't parse breakpoint ID");
-	    }
+
+            string num = args[0..i];
+            string expr = strip(args[i..$]);
+            try {
+                db.findBreakpoint(num).condition = expr;
+            } catch (DebuggerException de) {
+                db.pagefln("%s", de.msg);
+                return;
+            }
 	}
     }
 }
 
-class CommandCommand: Command
+class CommandsCommand: Command
 {
     static this()
     {
-	Debugger.registerCommand(new CommandCommand);
+	Debugger.registerCommand(new CommandsCommand);
     }
 
     override {
 	string name()
 	{
-	    return "command";
+	    return "commands";
 	}
 
 	string description()
 	{
-	    return "Set breakpoint stop command";
+	    return "Set breakpoint stop commands";
 	}
 
 	void run(Debugger db, string args)
 	{
-	    if (args.length == 0 || find(args, ' ') >= 0) {
-		db.pagefln("usage: command <id>");
+	    if (find(args, ' ') >= 0) {
+		db.pagefln("usage: commands [<id>]");
 		return;
 	    }
-	    try {
-                auto num = toUint(args);
-                if (db.interactive)
-                    db.pagefln(
-                      "Enter commands for breakpoint #%d, finish with \"end\"",
-                      num);
-		string[] cmds = db.readStatementBody;
-		db.setBreakpointCommands(num, cmds);
-	    } catch (ConvError ce) {
-		db.pagefln("Can't parse breakpoint ID");
-	    }
+            
+            Breakpoint bp;
+            try {
+                bp = db.findBreakpoint(args);
+            } catch (DebuggerException de) {
+                db.pagefln("%s", de.msg);
+                return;
+            }
+            if (db.interactive)
+                db.pagefln(
+                    "Enter commands for breakpoint #%d, finish with \"end\"",
+                    bp.id);
+            string[] cmds = db.readStatementBody;
+            bp.commands = cmds;
 	}
     }
 }
@@ -2419,11 +2433,12 @@ class EnableCommand: Command
 		foreach (bp; db.breakpoints_)
 		    bp.enable;
 	    } else {
-		try {
-		    db.enableBreakpoint(toUint(args));
-		} catch (ConvError ce) {
-		    db.pagefln("Can't parse breakpoint ID");
-		}
+                try {
+                    db.findBreakpoint(args).enable;
+                } catch (DebuggerException de) {
+                    db.pagefln("%s", de.msg);
+                    return;
+                }
 	    }
 	}
     }
@@ -2455,13 +2470,14 @@ class DisableCommand: Command
 	    }
 	    if (args.length == 0) {
 		foreach (bp; db.breakpoints_)
-		    bp.enable;
+		    bp.disable;
 	    } else {
-		try {
-		    db.disableBreakpoint(toUint(args));
-		} catch (ConvError ce) {
-		    db.pagefln("Can't parse breakpoint ID");
-		}
+                try {
+                    db.findBreakpoint(args).disable;
+                } catch (DebuggerException de) {
+                    db.pagefln("%s", de.msg);
+                    return;
+                }
 	    }
 	}
     }
@@ -2496,11 +2512,12 @@ class DeleteCommand: Command
 		db.pagefln("usage: delete [<id>]");
 		return;
 	    }
-	    try {
-		db.deleteBreakpoint(toUint(args));
-	    } catch (ConvError ce) {
-		db.pagefln("Can't parse breakpoint ID");
-	    }
+            try {
+                db.deleteBreakpoint(db.findBreakpoint(args));
+            } catch (DebuggerException de) {
+                db.pagefln("%s", de.msg);
+                return;
+            }
 	}
     }
 }
