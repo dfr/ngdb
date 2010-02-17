@@ -31,10 +31,14 @@
  */
 
 module sys.ptrace;
-version (DigitalMars)
-import std.c.posix.posix;
-else
-import std.c.unix.unix;
+version (D_Version2) {
+        import core.sys.posix.signal;
+} else {
+        version (DigitalMars)
+                import std.c.posix.posix;
+        else
+                import std.c.unix.unix;
+}
 import std.stdint;
 
 alias int32_t lwpid_t;
