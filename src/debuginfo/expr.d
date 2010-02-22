@@ -34,6 +34,7 @@ import debuginfo.debuginfo;
 import debuginfo.language;
 import debuginfo.types;
 import machine.machine;
+import target.target;
 
 class EvalException: Exception
 {
@@ -143,10 +144,10 @@ class IntegerConstantExpr: ExprBase
 	    Type ty;
 	    if (isSigned_) {
 		state.writeInteger(num_, val);
-		ty = lang_.integerType("int", true, 4);
+		ty = lang_.integerType("int", true, TS4);
 	    } else {
 		state.writeInteger(unum_, val);
-		ty = lang_.integerType("uint", false, 4);
+		ty = lang_.integerType("uint", false, TS4);
 	    }
 	    return new Value(new ConstantLocation(val), ty);
 	}
@@ -166,11 +167,11 @@ class FloatConstantExpr: ExprBase
 	super(lang);
 	num_ = strtold(toStringz(num), null);
 	if (num[$-1] == 'f' || num[$-1] == 'F')
-	    ty_ = lang_.floatType("float", 4);
+	    ty_ = lang_.floatType("float", TS4);
 	else if (num[$-1] == 'L')
-	    ty_ = lang_.floatType("real", 12);
+	    ty_ = lang_.floatType("real", TS12);
 	else
-	    ty_ = lang_.floatType("double", 8);
+	    ty_ = lang_.floatType("double", TS8);
     }
     override {
 	string toString()
@@ -290,7 +291,7 @@ class LengthExpr: UnaryExpr
 	    }
 	    ubyte[4] val;
 	    state.writeInteger(maxIndex - minIndex, val);
-	    auto ty = lang_.integerType("size_t", false, 4);
+	    auto ty = lang_.integerType("size_t", false, TS4);
 	    return new Value(new ConstantLocation(val), ty);
 	}
     }
@@ -359,7 +360,7 @@ class SizeofExpr: UnaryExpr
 	    Value expr = expr_.eval(sc, state).toValue(state);
 	    ubyte[4] val;
 	    state.writeInteger(expr.type.byteWidth, val);
-	    auto ty = lang_.integerType("size_t", false, 4);
+	    auto ty = lang_.integerType("size_t", false, TS4);
 	    return new Value(new ConstantLocation(val), ty);
 	}
     }
@@ -382,7 +383,7 @@ class SizeofTypeExpr: ExprBase
 	{
 	    ubyte[4] val;
 	    state.writeInteger(ty_.byteWidth, val);
-	    auto ty = lang_.integerType("size_t", false, 4);
+	    auto ty = lang_.integerType("size_t", false, TS4);
 	    return new Value(new ConstantLocation(val), ty);
 	}
     }
@@ -496,7 +497,7 @@ class LogicalNegateExpr: IntegerUnaryExpr!("!", "logically negate")
 	    if (!ptrTy)
 		return super.eval(sc, state);
 	    ulong ptr = state.readInteger(expr.loc.readValue(state));
-	    Type ty = lang_.integerType("int", true, 4);
+	    Type ty = lang_.integerType("int", true, TS4);
 	    ubyte v[4];
 	    state.writeInteger(ptr ? 0 : 1, v);
 	    return new Value(new ConstantLocation(v), ty);
@@ -872,17 +873,17 @@ class IndexExpr: ExprBase
 		ubyte[] val = base.loc.readValue(state);
 		minIndex = 0;
 		maxIndex = state.readInteger(val[0..state.pointerWidth]);
-		ulong addr = state.readInteger(val[state.pointerWidth..$]);
-		baseLoc = new MemoryLocation(addr, 0);
+		auto addr = state.readAddress(val[state.pointerWidth..$]);
+		baseLoc = new MemoryLocation(addr, TS0);
 	    } else if (ptrTy) {
 		elementType = ptrTy.baseType;
 		/*
 		 * Dereference the pointer to get the array base
 		 */
-		ulong addr = state.readInteger(base.loc.readValue(state));
+		auto addr = state.readAddress(base.loc.readValue(state));
 		minIndex = 0;
 		maxIndex = ~0;
-		baseLoc = new MemoryLocation(addr, 0);
+		baseLoc = new MemoryLocation(addr, TS0);
 	    } else {
 		throw new EvalException("Expected array or pointer for index expression");
 	    }
@@ -897,9 +898,10 @@ class IndexExpr: ExprBase
 		throw new EvalException(format("Index %d out of array bounds", i));
 	    i -= minIndex;
 
-	    auto elementLoc = baseLoc.subrange(i * elementType.byteWidth,
-					       elementType.byteWidth,
-					       state);
+	    auto elementLoc = baseLoc.subrange(
+                    cast(TargetSize) (i * elementType.byteWidth),
+                    elementType.byteWidth,
+                    state);
 
 	    return new Value(elementLoc, elementType);
 	}
@@ -950,17 +952,17 @@ class SliceExpr: ExprBase
 		ubyte[] val = base.loc.readValue(state);
 		minIndex = 0;
 		maxIndex = state.readInteger(val[0..state.pointerWidth]);
-		ulong addr = state.readInteger(val[state.pointerWidth..$]);
-		baseLoc = new MemoryLocation(addr, 0);
+		auto addr = state.readAddress(val[state.pointerWidth..$]);
+		baseLoc = new MemoryLocation(addr, TS0);
 	    } else if (ptrTy) {
 		elementType = ptrTy.baseType;
 		/*
 		 * Dereference the pointer to get the array base
 		 */
-		ulong addr = state.readInteger(base.loc.readValue(state));
+		auto addr = state.readAddress(base.loc.readValue(state));
 		minIndex = 0;
 		maxIndex = ~0;
-		baseLoc = new MemoryLocation(addr, 0);
+		baseLoc = new MemoryLocation(addr, TS0);
 	    } else {
 		throw new EvalException("Expected array or pointer for index expression");
 	    }
@@ -1005,7 +1007,7 @@ class SliceExpr: ExprBase
 
 	    return new Value(new ConstantLocation(val),
 			     new DArrayType(lang_, elementType,
-					    2 * state.pointerWidth));
+                                 cast(TargetSize) (2 * state.pointerWidth)));
 	}
     }
 private:
@@ -1063,7 +1065,7 @@ class DMemberExpr: ExprBase
 		CompoundType cTy = cast(CompoundType) ptrTy.baseType.underlyingType;
 		if (!cTy)
 		    throw new EvalException("Not a pointer to a compound type");
-		ulong ptr = state.readInteger(base.loc.readValue(state));
+		auto ptr = state.readAddress(base.loc.readValue(state));
 		return cTy.fieldValue(member_,
 				      new MemoryLocation(ptr, cTy.byteWidth),
 				      state);
@@ -1104,7 +1106,7 @@ class PointsToExpr: ExprBase
 	    CompoundType cTy = cast(CompoundType) ptrTy.baseType.underlyingType;
 	    if (!cTy)
 		throw new EvalException("Not a pointer to a compound type");
-	    ulong ptr = state.readInteger(base.loc.readValue(state));
+	    auto ptr = state.readAddress(base.loc.readValue(state));
 	    return cTy.fieldValue(member_,
 				  new MemoryLocation(ptr, cTy.byteWidth),
 				  state);

@@ -5,6 +5,8 @@ import std.stdio;
 version (LDC)
     import std.compat;
 
+import target.target;
+
 private enum
 {
     REGISTER	= 0,		// General register
@@ -53,11 +55,11 @@ class Disassembler
 	    mode_ = 64;
     }
 
-    bool isFlowControl(ref ulong loc, char delegate(ulong) readByte)
+    bool isFlowControl(ref TargetAddress loc, char delegate(TargetAddress) readByte)
     {
 	DecodeState ds;
 	Instruction ip[];
-	ulong iloc = loc;
+	TargetAddress iloc = loc;
 
 	bool morePrefixes = true;
 	while (morePrefixes) {
@@ -126,11 +128,11 @@ class Disassembler
 	return false;
     }
 
-    bool isJump(ref ulong loc, out ulong target, char delegate(ulong) readByte)
+    bool isJump(ref TargetAddress loc, out TargetAddress target, char delegate(TargetAddress) readByte)
     {
 	DecodeState ds;
 	Instruction ip[];
-	ulong iloc = loc;
+	TargetAddress iloc = loc;
 
 	bool morePrefixes = true;
 	while (morePrefixes) {
@@ -203,7 +205,7 @@ class Disassembler
 			off |= -(1L << 32);
 		}
 		loc = ds.loc_;
-		target = loc + off;
+		target = cast(TargetAddress) (loc + off);
 		return true;
 	    }
 	    if (insn.opcodes_[0] == 0xeb) {
@@ -211,7 +213,7 @@ class Disassembler
 		if (off & 0x80)
 		    off |= -(1L << 8);
 		loc = ds.loc_;
-		target = loc + off;
+		target = cast(TargetAddress) (loc + off);
 		return true;
 	    }
 	    insn.skipImmediate(&ds);
@@ -220,12 +222,12 @@ class Disassembler
 	return false;
     }
 
-    string disassemble(ref ulong loc, char delegate(ulong) readByte,
-	string delegate(ulong) lookupAddress)
+    string disassemble(ref TargetAddress loc, char delegate(TargetAddress) readByte,
+	string delegate(TargetAddress) lookupAddress)
     {
 	DecodeState ds;
 	Instruction ip[];
-	ulong iloc = loc;
+	TargetAddress iloc = loc;
 
 	bool morePrefixes = true;
 	while (morePrefixes) {
@@ -324,7 +326,7 @@ class Disassembler
 	}
 
 	string s = ".byte\t";
-	for (ulong i = iloc; i < loc; i++) {
+	for (auto i = iloc; i < loc; i++) {
 	    if (i > iloc)
 		s ~= ",";
 	    s ~= format("%#x", readByte(i));
@@ -1800,15 +1802,16 @@ struct DecodeState
     }
     ushort nextWord()
     {
-	ushort v = readByte_(loc_) | (readByte_(loc_ + 1) << 8);
-	loc_ += 2;
+	ushort v = readByte_(loc_++);
+        v |= (readByte_(loc_++) << 8);
 	return v;
     }
     uint nextDWord()
     {
-	uint v = readByte_(loc_) | (readByte_(loc_ + 1) << 8)
-	    | (readByte_(loc_ + 2) << 16) | (readByte_(loc_ + 3) << 24);
-	loc_ += 4;
+	ushort v = readByte_(loc_++);
+        v |= (readByte_(loc_++) << 8);
+        v |= (readByte_(loc_++) << 16);
+        v |= (readByte_(loc_++) << 24);
 	return v;
     }
     ulong nextQWord()
@@ -1816,10 +1819,9 @@ struct DecodeState
 	ulong v;
 	int bit = 0;
 	for (int i = 0; i < 8; i++) {
-	    v |= cast(ulong) readByte_(loc_ + i) << bit;
+	    v |= cast(ulong) readByte_(loc_++) << bit;
 	    bit += 8;
 	}
-	loc_ += 8;
 	return v;
     }
     int operandSize()
@@ -2254,7 +2256,7 @@ struct DecodeState
     {
 	if (mode_ == 32)
 	    addr &= 0xffffffff;
-	return lookupAddress_(addr);
+	return lookupAddress_(cast(TargetAddress) addr);
     }
     Operand displayAddress(int size, ulong addr)
     {
@@ -2684,9 +2686,9 @@ struct DecodeState
 	    return opcode;
     }
 
-    char delegate(ulong) readByte_;
-    string delegate(ulong) lookupAddress_;
-    ulong loc_;
+    char delegate(TargetAddress) readByte_;
+    string delegate(TargetAddress) lookupAddress_;
+    TargetAddress loc_;
     bool attMode_;
     int mode_;
 

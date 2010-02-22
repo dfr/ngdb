@@ -29,6 +29,27 @@ import debuginfo.debuginfo;
 import machine.machine;
 version(tangobos) import std.compat;
 
+typedef ulong TargetAddress;
+typedef ulong TargetSize;
+
+enum : TargetSize
+{
+    TS0 = cast(TargetSize) 0,
+    TS1 = cast(TargetSize) 1,
+    TS2 = cast(TargetSize) 2,
+    TS4 = cast(TargetSize) 4,
+    TS8 = cast(TargetSize) 8,
+    TS10 = cast(TargetSize) 10,
+    TS12 = cast(TargetSize) 12,
+    TS16 = cast(TargetSize) 16,
+}
+
+enum : TargetAddress
+{
+    TA0 = cast(TargetAddress) 0,
+    TAmax = cast(TargetAddress) ~0UL
+}
+
 class TargetException: Exception
 {
     this(string msg)
@@ -119,8 +140,8 @@ interface TargetThread
 struct TargetSymbol
 {
     string name;
-    ulong value;
-    ulong size;
+    TargetAddress value;
+    TargetSize size;
 }
 
 /**
@@ -140,17 +161,17 @@ interface TargetModule: Scope
      * Return the start address in the target address space for this
      * module.
      */
-    ulong start();
+    TargetAddress start();
 
     /**
      * Return the end address for this module
      */
-    ulong end();
+    TargetAddress end();
 
     /**
      * Return true if the given address is within this module.
      */
-    bool contains(ulong);
+    bool contains(TargetAddress);
 
     /**
      * Find debug information for thie module, if any.
@@ -165,13 +186,13 @@ interface TargetModule: Scope
     /**
      * Ditto
      */
-    bool lookupSymbol(ulong addr, out TargetSymbol);
+    bool lookupSymbol(TargetAddress addr, out TargetSymbol);
 
     /**
      * Return true of the address is within the Program Linkage Table for
      * this module.
      */
-    bool inPLT(ulong addr);
+    bool inPLT(TargetAddress addr);
 }
 
 /**
@@ -196,17 +217,17 @@ interface Target
     /**
      * Return the target's entry point.
      */
-    ulong entry();
+    TargetAddress entry();
 
     /**
      * Read from the target's memory.
      */
-    ubyte[] readMemory(ulong targetAddress, size_t bytes);
+    ubyte[] readMemory(TargetAddress targetAddress, TargetSize bytes);
 
     /**
      * Write to the target's memory.
      */
-    void writeMemory(ulong targetAddress, ubyte[] toWrite);
+    void writeMemory(TargetAddress targetAddress, ubyte[] toWrite);
 
     /**
      * Step the target by one instruction. After this method returns,
@@ -234,7 +255,7 @@ interface Target
      * with the same id value as that used to set it. Many breakpoints
      * can be created with the same id value.
      */
-    void setBreakpoint(ulong addr, TargetBreakpointListener tbl);
+    void setBreakpoint(TargetAddress addr, TargetBreakpointListener tbl);
 
     /**
      * Clear any breakpoints set with the given id.

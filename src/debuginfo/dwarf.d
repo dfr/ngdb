@@ -747,8 +747,8 @@ class DwarfFile: public DebugInfo
 
 		cu = new CompilationUnit(this);
 		cu.offset = parseOffset(p, is64);
-		cu.addressSize = parseUByte(p);
-		cu.segmentSize = parseUByte(p);
+		cu.addressSize = cast(TargetSize) parseUByte(p);
+		cu.segmentSize = cast(TargetSize) parseUByte(p);
 
 		// Undocumented: need to align to next multiple of
 		// 2 * address size
@@ -757,7 +757,7 @@ class DwarfFile: public DebugInfo
 		    p += a - ((p - &aranges[0]) % a);
 		}
 
-		ulong start, length;
+		TargetAddress start, length;
 		for (;;) {
 		    start = parseAddress(p);
 		    length = parseAddress(p);
@@ -787,8 +787,8 @@ class DwarfFile: public DebugInfo
 	    auto pNext = p + len;
 	    auto ver = parseUShort(p);
 	    parseOffset(p, is64);
-	    cu.addressSize = parseUByte(p);
-	    cu.segmentSize = 0;
+	    cu.addressSize = cast(TargetSize) parseUByte(p);
+	    cu.segmentSize = TS0;
 	    if (!(cu.offset in compilationUnits_))
 		compilationUnits_[cu.offset] = cu;
 	    p = pNext;
@@ -862,7 +862,7 @@ class DwarfFile: public DebugInfo
 	}
 
 	// DebugInfo compliance
-	Language findLanguage(ulong address)
+	Language findLanguage(TargetAddress address)
 	{
 	    CompilationUnit cu;
 	    if (findCU(address, cu))
@@ -870,7 +870,7 @@ class DwarfFile: public DebugInfo
 	    return null;
 	}
 
-	bool findLineByAddress(ulong address, out LineEntry[] res)
+	bool findLineByAddress(TargetAddress address, out LineEntry[] res)
 	{
 	    bool found = false;
 	    LineEntry lastEntry;
@@ -879,7 +879,7 @@ class DwarfFile: public DebugInfo
 	    bool processEntry(LineEntry* le)
 	    {
 		if (!le) {
-		    lastEntry.address = ~0;
+		    lastEntry.address = cast(TargetAddress) ~0UL;
 		    return false;
 		}
 		debug (line)
@@ -905,7 +905,7 @@ class DwarfFile: public DebugInfo
 		uint lineOffset = cu.die[DW_AT_stmt_list].ul;
 		char[] lines = debugSection(".debug_line");
 		char* p = &lines[lineOffset];
-		lastEntry.address = ~0;
+		lastEntry.address = cast(TargetAddress) ~0UL;
 		parseLineTable(p, &processEntry);
 		if (found) {
 		    res.length = 2;
@@ -993,7 +993,7 @@ class DwarfFile: public DebugInfo
 	    if (findSubprogram(pc, false, cu, func)) {
 		auto l = func[DW_AT_frame_base];
 		if (l) {
-		    auto dwloc = new DwarfLocation(cu, l, 1);
+		    auto dwloc = new DwarfLocation(cu, l, TS1);
 		    if (dwloc.evalLocation(state, loc)) {
 			/*
 			 * XXX LLVM generates useless values for
@@ -1015,9 +1015,9 @@ class DwarfFile: public DebugInfo
 			     * return the register value as a memory
 			     * location.
 			     */
-			    ulong regval =
-				state.readInteger(rloc.readValue(state));
-			    loc = new MemoryLocation(regval, 1);
+			    auto regval =
+				state.readAddress(rloc.readValue(state));
+			    loc = new MemoryLocation(regval, TS1);
 			}
 			return true;
 		    }
@@ -1027,7 +1027,7 @@ class DwarfFile: public DebugInfo
 	    return false;
 	}
 
-	Function findFunction(ulong pc)
+	Function findFunction(TargetAddress pc)
 	{
 	    CompilationUnit cu;
 	    DIE func;
@@ -1119,7 +1119,7 @@ private:
     void parseCompilationUnit(CompilationUnit cu, ref char* p)
     {
 	bool is64;
-	size_t len;
+	TargetSize len;
 	char* base = p;
 	char* pNext;
 
@@ -1185,7 +1185,7 @@ private:
 	}
 
 	bool is64;
-	size_t len;
+	TargetSize len;
 	char* pEnd, pEndHeader;
 	ulong offset = obj_.offset;
 
@@ -1268,7 +1268,7 @@ private:
 	    }
 
 	    LineEntry dle;
-	    dle.address = le.address + offset;
+	    dle.address = cast(TargetAddress) (le.address + offset);
 	    dle.name = .toString(fe.name);
 	    dle.fullname = fe.fullname;
 	    dle.line = le.line;
@@ -1433,7 +1433,7 @@ private:
     /**
      * Return the CU that contains the given address, if any.
      */
-    bool findCU(ulong address, out CompilationUnit res)
+    bool findCU(TargetAddress address, out CompilationUnit res)
     {
 	foreach (cu; compilationUnits_) {
 	    if (cu.contains(address)) {
@@ -1448,7 +1448,7 @@ private:
     /**
      * Returh the CU and subprogram containing the given address.
      */
-    bool findSubprogram(ulong address, bool findInline,
+    bool findSubprogram(TargetAddress address, bool findInline,
 			out CompilationUnit cu, out DIE func)
     {
 	if (findCU(address, cu))
@@ -1513,20 +1513,20 @@ private:
 	    return parseUInt(p);
     }
 
-    ulong parseAddress(ref char* p)
+    TargetAddress parseAddress(ref char* p)
     {
 	if (obj_.is64)
-	    return parseULong(p);
+	    return cast(TargetAddress) parseULong(p);
 	else
-	    return parseUInt(p);
+	    return cast(TargetAddress) parseUInt(p);
     }
 
-    ulong parseLength(ref char* p, bool is64)
+    TargetSize parseLength(ref char* p, bool is64)
     {
 	if (is64)
-	    return parseULong(p);
+	    return cast(TargetSize) parseULong(p);
 	else
-	    return parseUInt(p);
+	    return cast(TargetSize) parseUInt(p);
     }
 
     void skipString(ref char* p)
@@ -1543,12 +1543,12 @@ private:
 	return v;
     }
 
-    size_t parseInitialLength(ref char* p, ref bool is64)
+    TargetSize parseInitialLength(ref char* p, ref bool is64)
     {
 	uint v = parseUInt(p);
 	if (v < 0xffffff00) {
 	    is64 = false;
-	    return v;
+	    return cast(TargetSize) v;
 	}
 	if (v != 0xffffffff)
 	    throw new Exception("Bad initial length");
@@ -1556,7 +1556,7 @@ private:
 	ulong lv;
 	lv = parseUInt(p);
 	lv |= (cast(ulong) parseUInt(p) << 32);
-	return lv;
+	return cast(TargetSize) lv;
     }
 
     ulong parseULEB128(ref char* p)
@@ -1607,7 +1607,7 @@ private:
 
 class DwarfLocation: Location
 {
-    this(CompilationUnit cu, AttributeValue av, size_t len)
+    this(CompilationUnit cu, AttributeValue av, TargetSize len)
     {
 	cu_ = cu;
 	av_ = av;
@@ -1625,12 +1625,12 @@ class DwarfLocation: Location
 	    return false;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
 	    return length_;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    length_ = length;
 	}
@@ -1658,12 +1658,12 @@ class DwarfLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState state)
+	TargetAddress address(MachineState state)
 	{
 	    Location loc;
 	    if (av_.evalLocation(cu_, state, length_, loc))
 		return loc.address(state);
-	    return 0;
+	    return cast(TargetAddress) 0;
 	}
 
 	bool isLval(MachineState state)
@@ -1680,15 +1680,18 @@ class DwarfLocation: Location
 	    if (baseLoc.hasAddress(state)) {
 		stack.push(baseLoc.address(state));
 		evalExpr(cu_, state, stack);
-		return new MemoryLocation(stack.pop, length);
+		return new MemoryLocation(cast(TargetAddress) stack.pop,
+                                          length);
 	    } else {
 		stack.push(0);
 		evalExpr(cu_, state, stack);
-		return new SubrangeLocation(baseLoc, stack.pop, length);
+		return new SubrangeLocation(baseLoc,
+                                            cast(TargetSize) stack.pop,
+                                            length);
 	    }
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    Location loc;
 	    if (av_.evalLocation(cu_, state, length_, loc))
@@ -1715,7 +1718,7 @@ class DwarfLocation: Location
 
     CompilationUnit cu_;
     AttributeValue av_;
-    size_t length_;
+    TargetSize length_;
 }
 
 struct ValueStack
@@ -1768,7 +1771,7 @@ struct Expr
     char* evalExpr(CompilationUnit cu, MachineState state, ref ValueStack stack)
     {
 	long v, v1;
-	int addrlen = cu.addressSize;
+	TargetSize addrlen = cu.addressSize;
 	ubyte[] t;
 	char* pp;
 
@@ -1891,14 +1894,15 @@ struct Expr
 
 	    case DW_OP_deref:
 		v = stack.pop;
-		t = state.readMemory(v, addrlen);
+		t = state.readMemory(cast(TargetAddress) v, addrlen);
 		pp = cast(char*) &t[0];
 		stack.push(dw.parseAddress(pp));
 		break;
 
 	    case DW_OP_deref_size:
 		v = stack.pop;
-		t = state.readMemory(v, *p++);
+		t = state.readMemory(cast(TargetAddress) v,
+                                     cast(TargetSize) *p++);
 		while (t.length < addrlen)
 		    t ~= 0;
 		pp = cast(char*) &t[0];
@@ -2092,7 +2096,7 @@ struct Expr
     }
 
     bool evalLocation(CompilationUnit cu, MachineState state,
-		      size_t length, out Location result)
+		      TargetSize length, out Location result)
     {
 	/*
 	 * Loop over the expression finding pieces to compose into the
@@ -2125,9 +2129,11 @@ struct Expr
 			|| *p == DW_OP_form_tls_address)) {
 		    p++;
 		    loc = new TLSLocation(cu.parent.obj_.tlsindex,
-					  stack.pop - offset, length);
+					  cast(TargetSize)
+                                          (stack.pop - offset), length);
 		} else {
-		    loc = new MemoryLocation(stack.pop, length);
+		    loc = new MemoryLocation(cast(TargetAddress) stack.pop,
+                                             length);
 		}
 	    }
 	    if (p == end) {
@@ -2150,8 +2156,8 @@ struct Expr
 		switch (op) {
 		case DW_OP_piece:
 		    auto l = dw.parseULEB128(p);
-		    loc.length = l;
-		    cloc.addPiece(loc, l);
+		    loc.length = cast(TargetSize) l;
+		    cloc.addPiece(loc, cast(TargetSize) l);
 		    break;
 
 		case DW_OP_bit_piece:
@@ -2171,7 +2177,7 @@ struct Expr
 			    return v;
 			}
 
-			size_t len = (nbits + 7) / 8;
+			TargetSize len = (nbits + 7) / 8;
 			t = loc.readValue(state);
 			ulong pv = 0;
 			uint i, b;
@@ -2196,20 +2202,20 @@ struct Expr
 
 struct Loclist
 {
-    ulong offset;
+    TargetAddress offset;
     char* start;
 
     bool evalLocation(CompilationUnit cu, MachineState state,
-		      size_t length, out Location result)
+		      TargetSize length, out Location result)
     {
-	ulong pc = state.pc;
-	ulong sOff, eOff, base;
+	TargetAddress pc = state.pc;
+	TargetAddress sOff, eOff, base;
 
 	auto p = start;
 	auto lpc = cu.die[DW_AT_low_pc];
 	auto dw = cu.parent;
 	if (lpc)
-	    base = lpc.ul + offset;
+	    base = cast(TargetAddress) (lpc.ul + offset);
 	else
 	    base = offset;
 	for (;;) {
@@ -2222,7 +2228,7 @@ struct Loclist
 		base = eOff;
 		continue;
 	    }
-	    size_t expLen = dw.parseUShort(p);
+	    TargetSize expLen = cast(TargetSize) dw.parseUShort(p);
 	    auto expStart = p;
 	    auto expEnd = p + expLen;
 	    p = expEnd;
@@ -2236,11 +2242,11 @@ struct Loclist
 
     bool evalExpr(CompilationUnit cu, MachineState state, ref ValueStack stack)
     {
-	ulong pc = state.pc;
-	ulong sOff, eOff, base;
+	TargetAddress pc = state.pc;
+	TargetAddress sOff, eOff, base;
 
 	auto p = start;
-	base = cu.die[DW_AT_low_pc].ul + offset;
+	base = cast(TargetAddress) (cu.die[DW_AT_low_pc].ul + offset);
 	auto dw = cu.parent;
 	for (;;) {
 	    sOff = dw.parseAddress(p);
@@ -2252,7 +2258,7 @@ struct Loclist
 		base = eOff;
 		continue;
 	    }
-	    size_t expLen = dw.parseUShort(p);
+	    TargetSize expLen = cast(TargetSize) dw.parseUShort(p);
 	    auto expStart = p;
 	    auto expEnd = p + expLen;
 	    p = expEnd;
@@ -2295,22 +2301,22 @@ class AttributeValue
 	    break;
 
 	case DW_FORM_block:
-	    b.length = dw.parseULEB128(p);
+	    b.length = cast(TargetSize) dw.parseULEB128(p);
 	    goto readBlock;
 
 	case DW_FORM_block1:
-	    b.length = dw.parseUByte(p);
+	    b.length = cast(TargetSize) dw.parseUByte(p);
 	    goto readBlock;
 
 	case DW_FORM_block2:
-	    b.length = dw.parseUShort(p);
+	    b.length = cast(TargetSize) dw.parseUShort(p);
 	readBlock:
 	    b.start = p;
 	    p += b.length;
 	    break;
 
 	case DW_FORM_block4:
-	    b.length = dw.parseUInt(p);
+	    b.length = cast(TargetSize) dw.parseUInt(p);
 	    goto readBlock;
 	    
 	case DW_FORM_ref1:
@@ -2421,7 +2427,7 @@ class AttributeValue
     }
 
     bool evalLocation(CompilationUnit cu, MachineState state,
-		      size_t length, out Location loc)
+		      TargetSize length, out Location loc)
     {
 	if (isLoclistptr) {
 	    char[] locs = cu.parent.debugSection(".debug_loc");
@@ -2461,7 +2467,7 @@ class AttributeValue
 
     int form;
     struct block {
-	size_t length;
+	TargetSize length;
 	char* start;
 	char* end()
 	{
@@ -2592,15 +2598,15 @@ class DIE
 
 	if (this[DW_AT_low_pc]
 	    && this[DW_AT_high_pc]) {
-	    addresses_ ~= AddressRange(this[DW_AT_low_pc].ul + offset,
-				       this[DW_AT_high_pc].ul + offset);
+	    addresses_ ~= AddressRange(
+                cast(TargetAddress) (this[DW_AT_low_pc].ul + offset),
+                cast(TargetAddress) (this[DW_AT_high_pc].ul + offset));
 	} else if (this[DW_AT_ranges]) {
 	    char[] ranges = cu_.parent.debugSection(".debug_ranges");
 	    char* p = &ranges[this[DW_AT_ranges].ul];
 	    for (;;) {
-		ulong start, end;
-		start = dw.parseAddress(p);
-		end = dw.parseAddress(p);
+		auto start = dw.parseAddress(p);
+		auto end = dw.parseAddress(p);
 		if (start == 0 && end == 0)
 		    break;
 		start += offset;
@@ -2612,7 +2618,7 @@ class DIE
 	return addresses_;
     }
 
-    bool findInlinedSubroutine(ulong pc, out DIE func)
+    bool findInlinedSubroutine(TargetAddress pc, out DIE func)
     {
 	if (contains(pc)) {
 	    foreach (d; children_)
@@ -2627,7 +2633,7 @@ class DIE
 	return false;
     }
 
-    bool findSubprogram(ulong pc, bool findInline, out DIE func)
+    bool findSubprogram(TargetAddress pc, bool findInline, out DIE func)
     {
 	if (tag == DW_TAG_subprogram && contains(pc)) {
 	    if (findInline) {
@@ -2646,7 +2652,7 @@ class DIE
 	return false;
     }
 
-    bool contains(ulong pc)
+    bool contains(TargetAddress pc)
     {
 	foreach (a; addresses)
 	    if (a.contains(pc))
@@ -2696,8 +2702,8 @@ class DIE
 
 	switch (tag) {
 	case DW_TAG_base_type:
-	    auto sz = this[DW_AT_byte_size].ui;
-	    if (sz == 0) sz = 1;
+	    auto sz = cast(TargetSize) this[DW_AT_byte_size].ui;
+	    if (sz == 0) sz = TS1;
 	    switch (this[DW_AT_encoding].ul) {
 	    case DW_ATE_signed:
 		debugItem_ = lang.integerType(name, true, sz);
@@ -2769,7 +2775,9 @@ class DIE
 
 	case DW_TAG_enumeration_type:
 	{
-	    ulong sz = this[DW_AT_byte_size] ? this[DW_AT_byte_size].ul: 1;
+	    TargetSize sz = this[DW_AT_byte_size] ?
+                cast(TargetSize) this[DW_AT_byte_size].ul :
+                TS1;
 	    auto et = new EnumType(lang, name, sz);
 	    foreach (elem; children_) {
 		if (elem.tag != DW_TAG_enumerator)
@@ -2784,7 +2792,9 @@ class DIE
 	case DW_TAG_class_type:
 	case DW_TAG_union_type:
 	{
-	    ulong sz = this[DW_AT_byte_size] ? this[DW_AT_byte_size].ul: 0;
+	    TargetSize sz = this[DW_AT_byte_size] ?
+                cast(TargetSize) this[DW_AT_byte_size].ul :
+                TS0;
 	    string kind;
 	    if (tag == DW_TAG_structure_type)
 		kind = "struct";
@@ -2831,7 +2841,7 @@ class DIE
 		    } else {
 			count = ub + 1;
 		    }
-		    at.addDim(lb, count);
+		    at.addDim(cast(TargetSize) lb, cast(TargetSize) count);
 		}
 	    }
 	    break;
@@ -2839,7 +2849,8 @@ class DIE
 
 	case DW_TAG_darray_type:
 	    debugItem_ = new DArrayType(lang, subType,
-					this[DW_AT_byte_size].ui);
+					cast(TargetSize)
+                                        this[DW_AT_byte_size].ui);
 	    break;
 
 	case DW_TAG_aarray_type:
@@ -2847,6 +2858,7 @@ class DIE
 	    if (keyType) {
 		debugItem_ = new AArrayType(lang, subType,
 					    cu_[keyType].toType,
+                                            cast(TargetSize)
 					    this[DW_AT_byte_size].ui);
 	    } else {
 		writefln("No DW_AT_containing_type attribute for DW_TAG_aarray_type");
@@ -2920,7 +2932,7 @@ class DIE
 		addr = this[DW_AT_entry_pc].ul + offset;
 	    else if (this[DW_AT_low_pc])
 		addr = this[DW_AT_low_pc].ul + offset;
-	    f.address = addr;
+	    f.address = cast(TargetAddress) addr;
 	    auto inl = this[DW_AT_inline];
 	    if (inl)
 		if (inl.ul == DW_INL_declared_inlined
@@ -2973,23 +2985,23 @@ class CompilationUnit: Scope
 	parent = df;
     }
 
-    uint addressSize()
+    TargetSize addressSize()
     {
 	return addressSize_;
     }
 
-    void addressSize(uint v)
+    void addressSize(TargetSize v)
     {
 	assert(v == 4 || v == 8);
 	addressSize_ = v;
     }
 
-    uint segmentSize()
+    TargetSize segmentSize()
     {
 	return segmentSize_;
     }
 
-    void segmentSize(uint v)
+    void segmentSize(TargetSize v)
     {
 	segmentSize_ = v;
     }
@@ -3022,7 +3034,7 @@ class CompilationUnit: Scope
 	return lang_;
     }
 
-    bool contains(ulong pc)
+    bool contains(TargetAddress pc)
     {
 	if (addresses.length) {
 	    foreach (ref a; addresses)
@@ -3067,7 +3079,7 @@ class CompilationUnit: Scope
 	}
     }
 
-    bool findSubprogram(ulong pc, bool findInline, out DIE func)
+    bool findSubprogram(TargetAddress pc, bool findInline, out DIE func)
     {
 	foreach (kid; die.children_)
 	    if (kid.findSubprogram(pc, findInline, func))
@@ -3146,8 +3158,8 @@ class CompilationUnit: Scope
     DwarfFile parent;
     ulong offset;		// Offset in .debug_info
     bool is64;			// CU uses 64bit dwarf
-    uint addressSize_;		// size in bytes of an address
-    uint segmentSize_;		// size in bytes of a segment
+    TargetSize addressSize_;	// size in bytes of an address
+    TargetSize segmentSize_;	// size in bytes of a segment
     AddressRange[] addresses;	// set of address ranges for this CU
     DIE die;			// top-level DIE for this CU
     DIE[ulong] dieMap;		// map DIE offset to loaded DIE
@@ -3230,7 +3242,8 @@ class FDE
 	execute(instructionStart, instructionEnd, pc, fdeFs, cieFs);
 
 	auto reg = state.getGR(fdeFs.cfaReg);
-	return new MemoryLocation(reg + fdeFs.cfaOffset, 1);
+	return new MemoryLocation(cast(TargetAddress) (reg + fdeFs.cfaOffset),
+                                  TS1);
     }
 
     MachineState unwind(MachineState state)
@@ -3262,7 +3275,8 @@ class FDE
 
 	    case RLoc.Rule.offsetN:
 		off = rl.N;
-		b = state.readMemory(cfa + off, dw.obj_.is64 ? 8 : 4);
+		b = state.readMemory(cast(TargetAddress) (cfa + off),
+                                     cast(TargetSize) (dw.obj_.is64 ? 8 : 4));
 		newState.setGR(i, dw.obj_.read(b));
 		break;
 

@@ -102,29 +102,33 @@ class ArmState: MachineState
 	    }
 	}
 
-	ulong pc()
+	TargetAddress pc()
 	{
-	    return gregs_[ArmReg.PC];
+            return cast(TargetAddress) gregs_[ArmReg.PC];
 	}
 
-	void pc(ulong pc)
+	void pc(TargetAddress pc)
 	{
-	    gregs_[ArmReg.PC] = pc;
+	    gregs_[ArmReg.PC] = cast(uint) pc;
 	    grdirty_ = true;
 	}
 
-	ulong tp()
+	TargetAddress tp()
 	{
-	    return tp_;
+	    return cast(TargetAddress) tp_;
 	}
 
-	ulong tls_get_addr(uint index, ulong offset)
+	TargetAddress tls_get_addr(uint index, ulong offset)
 	{
 	    if (!tp_)
-		return 0;
-	    ulong dtv = readInteger(readMemory(tp_ + 4, 4));
-	    ulong base = readInteger( readMemory(dtv + 4 + 4*index, 4));
-	    return base + offset;
+		return TA0;
+	    ulong dtv =
+                readInteger(readMemory(cast(TargetAddress)(tp_ + 4),
+                                       TS4));
+	    ulong base =
+                readInteger(readMemory(cast(TargetAddress)(dtv + 4 + 4*index),
+                                       TS4));
+	    return cast(TargetAddress)(base + offset);
 	}
 
 	PtraceCommand[] ptraceReadCommands()
@@ -165,9 +169,9 @@ class ArmState: MachineState
 	    return gregs_[gregno];
 	}
 
-	size_t grWidth(int greg)
+	TargetSize grWidth(int greg)
 	{
-	    return 4;
+	    return TS4;
 	}
 
 	uint spregno()
@@ -175,7 +179,7 @@ class ArmState: MachineState
 	    return 4;
 	}
 
-	size_t grCount()
+	uint grCount()
 	{
 	    return ArmReg.GR_COUNT;
 	}
@@ -200,7 +204,7 @@ class ArmState: MachineState
 	{
 	}
 
-	ubyte[] readRegister(uint regno, size_t bytes)
+	ubyte[] readRegister(uint regno, TargetSize bytes)
 	{
 	    if (regno < ArmReg.GR_COUNT) {
 		ubyte[] v;
@@ -238,9 +242,9 @@ class ArmState: MachineState
 	    grdirty_ = true;
 	}
 
-	uint pointerWidth()
+	TargetSize pointerWidth()
 	{
-	    return 4;
+	    return TS4;
 	}
 
 	ulong readInteger(ubyte[] bytes)
@@ -279,17 +283,17 @@ class ArmState: MachineState
 	{
 	}
 
-	ubyte[] readMemory(ulong address, size_t bytes)
+	ubyte[] readMemory(TargetAddress address, TargetSize bytes)
 	{
 	    return target_.readMemory(address, bytes);
 	}
 
-	void writeMemory(ulong address, ubyte[] toWrite)
+	void writeMemory(TargetAddress address, ubyte[] toWrite)
 	{
 	    target_.writeMemory(address, toWrite);
 	}
 
-	Value call(ulong address, Type returnType, Value[] args)
+	Value call(TargetAddress address, Type returnType, Value[] args)
 	{
 	    throw new EvalException("function call not supported");
 	}
@@ -297,15 +301,15 @@ class ArmState: MachineState
 	Value returnValue(Type returnType)
 	{
 	    // XXX do this properly
-	    return new Value(new ConstantLocation(readRegister(0, 4)),
+	    return new Value(new ConstantLocation(readRegister(0, grWidth(0))),
 			     returnType);
 	}
 
-	ulong findFlowControl(ulong start, ulong end)
+	TargetAddress findFlowControl(TargetAddress start, TargetAddress end)
 	{
-	    ulong addr = start;
-	    while (start < end) {
-		uint insn = readInteger(readMemory(addr, 4));
+	    TargetAddress addr = start;
+	    while (addr < end) {
+		uint insn = readInteger(readMemory(addr, TS4));
 		if (((insn >> 24) & 7) == 5)	// B, BL
 		    break;
 		if (((insn >> 20) & 0xff) == 0x12) // BX
@@ -321,11 +325,11 @@ class ArmState: MachineState
 	    return addr;
 	}
 
-	ulong findJump(ulong start, ulong end)
+	TargetAddress findJump(TargetAddress start, TargetAddress end)
 	{
-	    ulong addr = start;
-	    while (start < end) {
-		uint insn = readInteger(readMemory(addr, 4));
+	    TargetAddress addr = start;
+	    while (addr < end) {
+		uint insn = readInteger(readMemory(addr, TS4));
 		if (((insn >> 24) & 7) == 5)	// B, BL
 		    break;
 		addr += 4;
@@ -333,17 +337,16 @@ class ArmState: MachineState
 	    return addr;
 	}
 
-	string disassemble(ref ulong address,
-			   string delegate(ulong) lookupAddress)
+	string disassemble(ref TargetAddress address,
+			   string delegate(TargetAddress) lookupAddress)
 	{
-	    uint readWord(ulong address)
+	    uint readWord(TargetAddress address)
 	    {
-		ubyte[] t = readMemory(address, 4);
+		ubyte[] t = readMemory(address, TS4);
 		uint v = readInteger(t);
 		return v;
 	    }
-	    return machine.armdis.disasm(address,
-		&readWord, lookupAddress);
+	    return machine.armdis.disasm(address, &readWord, lookupAddress);
 	}
 
 	string[] contents(MachineState)

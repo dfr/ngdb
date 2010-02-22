@@ -378,7 +378,7 @@ private class Breakpoint: TargetBreakpointListener
 
     void deactivate(TargetModule mod)
     {
-	ulong[] newAddresses;
+	TargetAddress[] newAddresses;
 
 	foreach (addr; addresses_)
 	    if (!mod.contains(addr))
@@ -424,7 +424,7 @@ private class Breakpoint: TargetBreakpointListener
 	return enabled_;
     }
 
-    ulong[] addresses()
+    TargetAddress[] addresses()
     {
 	return addresses_;
     }
@@ -483,7 +483,7 @@ private class Breakpoint: TargetBreakpointListener
     bool enabled_ = true;
     Debugger db_;
     uint id_;
-    ulong[] addresses_;
+    TargetAddress[] addresses_;
 }
 
 private class SourceFile
@@ -944,7 +944,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
     }
 
     bool parseFormat(ref string args,
-		     out uint count, out uint width, out string f)
+		     out uint count, out TargetSize width, out string f)
     {
 	assert(args[0] == '/');
 	int i = find(args, ' ');
@@ -971,21 +971,21 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	} else {
 	    count = 1;
 	}
-	width = 4;
+	width = TS4;
 	f = "d";
 	while (fmt.length > 0) {
 	    switch (fmt[0]) {
 	    case 'b':
-		width = 1;
+		width = TS1;
 		break;
 	    case 'w':
-		width = 2;
+		width = TS2;
 		break;
 	    case 'l':
-		width = 4;
+		width = TS4;
 		break;
 	    case 'q':
-		width = 8;
+		width = TS8;
 		break;
 	    case 'd':
 	    case 'o':
@@ -1086,7 +1086,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	} else {
 	    currentFrame_ = topFrame_ =
 		new Frame(this, 0, null, null, null, s);
-	    ulong tpc = s.pc;
+	    TargetAddress tpc = s.pc;
 	    writefln("%s:\t%s", lookupAddress(s.pc),
 		     s.disassemble(tpc, &lookupAddress));
 	}
@@ -1140,7 +1140,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	infoCommands_.onSourceLine(this, sf, line);
     }
 
-    string describeAddress(ulong pc, MachineState state)
+    string describeAddress(TargetAddress pc, MachineState state)
     {
 	LineEntry[] le;
 	foreach (mod; modules_) {
@@ -1160,7 +1160,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	return lookupAddress(pc);
     }
 
-    string lookupAddress(ulong addr)
+    string lookupAddress(TargetAddress addr)
     {
 	TargetSymbol bestSym;
 	bool found = false;
@@ -1176,7 +1176,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	if (found) {
 	    string s;
 	    if (addr != bestSym.value)
-		s = bestSym.name ~ "+" ~ .toString(addr - bestSym.value);
+		s = bestSym.name ~ "+" ~ .toString(cast(int)(addr - bestSym.value));
 	    else
 		s = bestSym.name;
 	    if (s.length > 33)
@@ -1186,7 +1186,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	return std.string.format("%#x", addr);
     }
 
-    void setStepBreakpoint(ulong pc)
+    void setStepBreakpoint(TargetAddress pc)
     {
 	debug (step)
 	    writefln("step breakpoint at %#x", pc);
@@ -1219,9 +1219,9 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	    di.findFrameBase(s, frameLoc);
 	    auto frameFunc = di.findFunction(s.pc);
 
-	    ulong frame = frameLoc.address(s);
-	    ulong startpc = s.pc;
-	    ulong stoppc, flowpc;
+	    TargetAddress frame = frameLoc.address(s);
+	    TargetAddress startpc = s.pc;
+	    TargetAddress stoppc, flowpc;
 
 	    LineEntry[] le;
 	    if (di.findLineByAddress(s.pc, le))
@@ -1236,7 +1236,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	    if (flowpc < stoppc)
 		setStepBreakpoint(flowpc);
 	    else
-		flowpc = 0;
+		flowpc = TA0;
 
 	    bool resetStep = false;
 	    do {
@@ -1250,7 +1250,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		    target_.wait();
 		}
 		debug (step) {
-		    void stoppedAt(string msg, ulong pc)
+		    void stoppedAt(string msg, TargetAddress pc)
 		    {
 			writefln("%s %#x (%s)", msg, pc,
 				replace(s.disassemble(pc, &lookupAddress), "\t", " "));
@@ -1268,7 +1268,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		    debug (step)
 			stoppedAt("single stepped to", s.pc);
 
-		    bool inPLT(ulong pc) {
+		    bool inPLT(TargetAddress pc) {
 			foreach (mod; modules_)
 			    if (mod.inPLT(pc))
 				return true;
@@ -1315,7 +1315,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 			    writefln("stepping over call");
 			MachineState ns = di.unwind(s);
 			clearStepBreakpoints();
-			ulong retpc = ns.pc;
+			TargetAddress retpc = ns.pc;
 			debug (step)
 			    writefln("return breakpoint at %#x", retpc);
 			setStepBreakpoint(retpc);
@@ -1349,7 +1349,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		    if (flowpc < stoppc)
 			setStepBreakpoint(flowpc);
 		    else
-			flowpc = 0;
+			flowpc = TA0;
 		}
 	    } while (s.pc < stoppc);
 	    clearStepBreakpoints();
@@ -1372,7 +1372,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	TargetThread t = currentThread;
 	MachineState s = t.state;
 
-	ulong frame = 0;
+	TargetAddress frame;
 	DebugInfo di;
 
 	if (findDebugInfo(s, di)) {
@@ -1404,7 +1404,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 			writefln("stepping over call");
 		    MachineState ns = di.unwind(s);
 		    clearStepBreakpoints();
-		    ulong retpc = ns.pc;
+		    TargetAddress retpc = ns.pc;
 		    debug (step)
 			writefln("return breakpoint at %#x", retpc);
 		    setStepBreakpoint(retpc);
@@ -1424,7 +1424,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	}
 	stopped();
 	if (currentFrame.func_) {
-	    ulong tpc = s.pc;
+	    TargetAddress tpc = s.pc;
 	    pagefln("%s:\t%s", lookupAddress(s.pc),
 		    s.disassemble(tpc, &lookupAddress));
 	}
@@ -2614,7 +2614,7 @@ class InfoModulesCommand: Command
 
 	void run(Debugger db, string args)
 	{
-	    ulong pc = 0;
+	    TargetAddress pc;
 	    if (db.currentThread)
 		pc = db.currentThread.state.pc;
 	    foreach (i, mod; db.modules_) {
@@ -2687,8 +2687,8 @@ class InfoRegistersCommand: Command
 	    db.pagefln("%s", f.toString);
 	    auto s = f.state_;
 	    s.dumpState;
-	    ulong pc = s.pc;
-	    ulong tpc = pc;
+	    TargetAddress pc = s.pc;
+	    TargetAddress tpc = pc;
 	    db.pagefln("%s:\t%s", db.lookupAddress(pc),
 		     s.disassemble(tpc, &db.lookupAddress));
 	}
@@ -2753,7 +2753,8 @@ class InfoVariablesCommand: Command
 	    }
 
 	    if (args.length > 0 && args[0] == '/') {
-		uint count, width;
+		uint count;
+                TargetSize width;
 		if (!db.parseFormat(args, count, width, fmt))
 		    return;
 		if (fmt == "i") {
@@ -2973,7 +2974,8 @@ class PrintCommand: Command
 
 	    if (args.length > 0
 		&& args[0] == '/') {
-		uint count, width;
+		uint count;
+                TargetSize width;
 		if (!db.parseFormat(args, count, width, fmt))
 		    return;
 		if (fmt == "i") {
@@ -3088,7 +3090,7 @@ class ExamineCommand: Command
 		    return;
 	    }
 
-	    ulong addr;
+	    TargetAddress addr;
 	    if (args.length == 0) {
 		if (!lastAddrValid_) {
 		    db.pagefln("No previous address to examine");
@@ -3113,7 +3115,7 @@ class ExamineCommand: Command
 		    auto pTy = cast(PointerType) v.type;
 		    auto fTy = cast(FunctionType) v.type;
 		    if (pTy || v.type.isIntegerType)
-			addr = s.readInteger(v.loc.readValue(s));
+			addr = s.readAddress(v.loc.readValue(s));
 		    else if (fTy)
 			addr = v.loc.address(s);
 		    else
@@ -3137,7 +3139,7 @@ class ExamineCommand: Command
 		while (count > 0) {
 		    ubyte[] mem = db.target_.readMemory(addr, width_);
 		    addr += width_;
-		    ulong val = s.readInteger(mem);
+		    TargetAddress val = s.readAddress(mem);
 		    if (width_ < 8)
 			val &= (1UL << width_ * 8) - 1;
 		    string fmt = format("%%0%d%s ", 2*width_, fmt_);
@@ -3157,9 +3159,9 @@ class ExamineCommand: Command
     }
 private:
     bool lastAddrValid_;
-    ulong lastAddr_;
+    TargetAddress lastAddr_;
     uint count_ = 1;
-    uint width_ = 4;
+    TargetSize width_ = TS4;
     string fmt_ = "x";
 }
 

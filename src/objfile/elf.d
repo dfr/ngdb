@@ -912,7 +912,7 @@ import sys.pread;
 
 class Elffile: Objfile
 {
-    static Objfile open(string file, ulong base)
+    static Objfile open(string file, TargetAddress base)
     {
 	int fd = .open(toStringz(file), O_RDONLY);
 	if (fd > 0) {
@@ -997,11 +997,11 @@ class Elffile: Objfile
 
     abstract bool is64();
 
-    abstract Symbol* lookupSymbol(ulong addr);
+    abstract Symbol* lookupSymbol(TargetAddress addr);
 
     abstract Symbol* lookupSymbol(string name);
 
-    abstract ulong offset();
+    abstract TargetAddress offset();
 
     abstract uint tlsindex();
 
@@ -1013,25 +1013,25 @@ class Elffile: Objfile
 
     abstract string interpreter();
 
-    abstract void enumerateProgramHeaders(void delegate(uint, ulong, ulong) dg);
+    abstract void enumerateProgramHeaders(void delegate(uint, TargetAddress, TargetAddress) dg);
 
     abstract void enumerateNotes(void delegate(uint, string, ubyte*) dg);
 
-    abstract ubyte[] readProgram(ulong addr, size_t len);
+    abstract ubyte[] readProgram(TargetAddress addr, TargetSize len);
 
     abstract void digestDynamic(Target target);
 
-    abstract ulong findSharedLibraryBreakpoint(Target target);
+    abstract TargetAddress findSharedLibraryBreakpoint(Target target);
 
     abstract uint sharedLibraryState(Target target);
 
     abstract void enumerateLinkMap(Target target,
-				   void delegate(string, ulong, ulong) dg);
+				   void delegate(string, TargetAddress, TargetAddress) dg);
 
     abstract void enumerateNeededLibraries(Target target,
 					   void delegate(string) dg);
 
-    abstract bool inPLT(ulong pc);
+    abstract bool inPLT(TargetAddress pc);
 
 private:
     Endian endian_;
@@ -1039,7 +1039,7 @@ private:
 
 template ElfFileBase()
 {
-    this(int fd, ulong base)
+    this(int fd, TargetAddress base)
     {
 	fd_ = fd;
 
@@ -1065,15 +1065,15 @@ template ElfFileBase()
 	if (base > 0 && ph_.length > 0) {
 	    foreach (ph; ph_) {
 		if (read(ph.p_type) == PT_LOAD) {
-		    offset_ = base - read(ph.p_vaddr);
+                    offset_ = cast(TargetAddress) (base - read(ph.p_vaddr));
 		    break;
 		}
 	    }
 	} else {
-	    offset_ = 0;
+	    offset_ = cast(TargetAddress) 0;
 	}
 
-	entry_ = read(eh.e_entry) + offset_;
+	entry_ = cast(TargetAddress) (read(eh.e_entry) + offset_);
 
 	debug (elf)
 	    writefln("%d sections", read(eh.e_shnum));
@@ -1103,8 +1103,8 @@ template ElfFileBase()
 		continue;
 	    if (.toString(&shStrings_[sh.sh_name]) != ".plt")
 		continue;
-	    pltStart_ = read(sh.sh_addr) + offset_;
-	    pltEnd_ = pltStart_ + read(sh.sh_size);
+	    pltStart_ = cast(TargetAddress) (read(sh.sh_addr) + offset_);
+	    pltEnd_ = cast(TargetAddress) (pltStart_ + read(sh.sh_size));
 	}
 
 	Symbol[] symtab;
@@ -1152,7 +1152,7 @@ template ElfFileBase()
 	}
     }
 
-    Symbol* lookupSymbol(ulong addr)
+    Symbol* lookupSymbol(TargetAddress addr)
     {
 	Symbol *sp;
 	sp = _lookupSymbol(addr, symtab_);
@@ -1177,12 +1177,12 @@ template ElfFileBase()
 	return null;
     }
 
-    ulong entry()
+    TargetAddress entry()
     {
 	return entry_;
     }
 
-    ulong offset()
+    TargetAddress offset()
     {
 	return offset_;
     }
@@ -1235,11 +1235,13 @@ template ElfFileBase()
 	return null;
     }
 
-    void enumerateProgramHeaders(void delegate(uint, ulong, ulong) dg)
+    void enumerateProgramHeaders(void delegate(uint, TargetAddress, TargetAddress) dg)
     {
 	foreach (ph; ph_)
-	    dg(read(ph.p_type), read(ph.p_vaddr) + offset_,
-	       read(ph.p_vaddr) + read(ph.p_memsz) + offset_);
+	    dg(read(ph.p_type),
+               cast(TargetAddress) (read(ph.p_vaddr) + offset_),
+	       cast(TargetAddress) (read(ph.p_vaddr) + read(ph.p_memsz)
+                                    + offset_));
     }
 
     void enumerateNotes(void delegate(uint, string, ubyte*) dg)
@@ -1252,9 +1254,9 @@ template ElfFileBase()
 		    != notes.length)
 		    throw new Exception("Can't read from file");
 
-		size_t roundup(size_t n, size_t sz = Size.sizeof)
+		ulong roundup(ulong n, size_t sz = Size.sizeof)
 		{
-		    return (n + sz - 1) & ~(sz - 1);
+		    return ((n + sz - 1) & ~(sz - 1));
 		}
 
 		size_t i = 0;
@@ -1273,12 +1275,12 @@ template ElfFileBase()
 	}
     }
 
-    void enumerateDynamic(Target target, void delegate(uint, ulong) dg)
+    void enumerateDynamic(Target target, void delegate(uint, TargetAddress) dg)
     {
-	ulong s, e;
+	TargetAddress s, e;
 	bool found = false;
 
-	void getDynamic(uint tag, ulong start, ulong end)
+	void getDynamic(uint tag, TargetAddress start, TargetAddress end)
 	{
 	    if (tag == PT_DYNAMIC) {
 		s = start;
@@ -1294,7 +1296,7 @@ template ElfFileBase()
 	debug (elf)
 	    writefln("Found dynamic at %#x .. %#x", s, e);
 	ubyte[] dyn;
-	dyn = target.readMemory(s, e - s);
+	dyn = target.readMemory(s, cast(TargetSize) (e - s));
 
 	if (dyn.length == 0)
 	    return;
@@ -1302,12 +1304,12 @@ template ElfFileBase()
 	ubyte* p = &dyn[0], end = p + dyn.length;
 	while (p < end) {
 	    Dyn* d = cast(Dyn*) p;
-	    dg(read(d.d_tag), read(d.d_val));
+	    dg(read(d.d_tag), cast(TargetAddress) read(d.d_val));
 	    p += Dyn.sizeof;
 	}
     }
 
-    ubyte[] readProgram(ulong addr, size_t len)
+    ubyte[] readProgram(TargetAddress addr, TargetSize len)
     {
 	ubyte[] res;
 	res.length = len;
@@ -1317,19 +1319,19 @@ template ElfFileBase()
 
 	memset(&res[0], 0, len);
 
-	ulong sa = addr;
-	ulong ea = addr + len;
+	auto sa = addr;
+	auto ea = addr + len;
 	foreach (ph; ph_) {
 	    if (read(ph.p_type) == PT_LOAD) {
-		ulong psa = read(ph.p_vaddr) + offset_;
-		ulong pea = psa  + read(ph.p_filesz);
+		auto psa = read(ph.p_vaddr) + offset_;
+		auto pea = psa  + read(ph.p_filesz);
 		if (ea > psa && sa < pea) {
 		    /*
 		     * Some bytes are in this section.
 		     */
-		    ulong s = psa;
+		    auto s = psa;
 		    if (sa > s) s = sa;
-		    ulong e = pea;
+		    auto e = pea;
 		    if (ea < e) e = ea;
 		    if (pread(fd_, &res[s - sa], e - s,
 			      read(ph.p_offset) + s - psa) != e - s)
@@ -1342,7 +1344,7 @@ template ElfFileBase()
 
     void digestDynamic(Target target)
     {
-	void dg(uint tag, ulong val)
+	void dg(uint tag, TargetAddress val)
 	{
 	    if (tag == DT_DEBUG)
 		r_debug_ = val + offset_;
@@ -1355,37 +1357,39 @@ template ElfFileBase()
 		writefln("r_debug @ %#x", r_debug_);
     }
 
-    ulong findSharedLibraryBreakpoint(Target target)
+    TargetAddress findSharedLibraryBreakpoint(Target target)
     {
 	if (!r_debug_)
-	    return 0;
-	ubyte[] t = target.readMemory(r_debug_, r_debug.sizeof);
+	    return cast(TargetAddress) 0;
+	ubyte[] t = target.readMemory(r_debug_,
+                                      cast(TargetSize) r_debug.sizeof);
 	r_debug* p = cast(r_debug*) &t[0];
-	return read(p.r_brk);
+	return cast(TargetAddress) read(p.r_brk);
     }
 
     uint sharedLibraryState(Target target)
     {
 	if (!r_debug_)
 	    return RT_CONSISTENT;
-	ubyte[] t = target.readMemory(r_debug_, r_debug.sizeof);
+	ubyte[] t = target.readMemory(r_debug_,
+                                      cast(TargetSize) r_debug.sizeof);
 	r_debug* p = cast(r_debug*) &t[0];
 	return read(p.r_state);
     }
 
     void enumerateLinkMap(Target target,
-			  void delegate(string, ulong, ulong) dg)
+			  void delegate(string, TargetAddress, TargetAddress) dg)
     {
 	if (!r_debug_)
 	    return;
 
-	string readString(Target target, ulong addr)
+	string readString(Target target, TargetAddress addr)
 	{
 	    string s;
 	    char c;
 
 	    do {
-		ubyte[] t = target.readMemory(addr++, 1);
+		ubyte[] t = target.readMemory(addr++, TS1);
 		c = cast(char) t[0];
 		if (c)
 		    s ~= c;
@@ -1393,31 +1397,36 @@ template ElfFileBase()
 	    return s;
 	}
 
-	ubyte[] t = target.readMemory(r_debug_, r_debug.sizeof);
+	ubyte[] t = target.readMemory(r_debug_,
+                                      cast(TargetSize) r_debug.sizeof);
 	r_debug* p = cast(r_debug*) &t[0];
-	ulong lp = read(p.r_map);
+	auto lp = read(p.r_map);
 	while (lp) {
-	    t = target.readMemory(lp, link_map.sizeof);
+	    t = target.readMemory(cast(TargetAddress) lp,
+                                  cast(TargetSize) link_map.sizeof);
 	    link_map *lm = cast(link_map*) &t[0];
-	    dg(readString(target, read(lm.l_name)), lp, read(lm.l_addr));
+	    dg(readString(target, cast(TargetAddress) read(lm.l_name)),
+               cast(TargetAddress) lp,
+               cast(TargetAddress) read(lm.l_addr));
 	    lp = read(lm.l_next);
 	}
     }
 
     void enumerateNeededLibraries(Target target, void delegate(string) dg)
     {
-	ulong strtabAddr, strtabSize;
+	TargetAddress strtabAddr;
+        TargetSize strtabSize;
 	string strtab;
 
-	void findStrtab(uint tag, ulong val)
+	void findStrtab(uint tag, TargetAddress val)
 	{
 	    if (tag == DT_STRTAB)
 		strtabAddr = val + offset_;
 	    else if (tag == DT_STRSZ)
-		strtabSize = val;
+		strtabSize = cast(TargetSize) val;
 	}
 
-	void findNeeded(uint tag, ulong val)
+	void findNeeded(uint tag, TargetAddress val)
 	{
 	    if (tag == DT_NEEDED && val < strtab.length)
 		dg(.toString(&strtab[val]));
@@ -1430,7 +1439,7 @@ template ElfFileBase()
 	enumerateDynamic(target, &findNeeded);
     }
 
-    bool inPLT(ulong pc)
+    bool inPLT(TargetAddress pc)
     {
 	return pc >= pltStart_ && pc < pltEnd_;
     }
@@ -1466,8 +1475,8 @@ private:
 	foreach (i, ref sym; syms) {
 	    Symbol* s = &symbols[i];
 	    s.name = std.string.toString(&strings[read(sym.st_name)]);
-	    s.value = read(sym.st_value) + offset_;
-	    s.size = sym.st_size;
+	    s.value = cast(TargetAddress) (read(sym.st_value) + offset_);
+	    s.size = cast(TargetSize) sym.st_size;
 	    s.type = sym.st_type;
 	    s.binding = sym.st_bind;
 	    s.section = sym.st_shndx;
@@ -1503,12 +1512,12 @@ private:
     int		fd_ = -1;
     int		type_;
     uint	machine_;
-    ulong	entry_;
-    ulong	offset_;
+    TargetAddress entry_;
+    TargetAddress offset_;
     uint	tlsindex_;
-    ulong	r_debug_ = 0;
-    ulong	pltStart_ = 0;
-    ulong	pltEnd_ = 0;
+    TargetAddress r_debug_;
+    TargetAddress pltStart_;
+    TargetAddress pltEnd_;
     Phdr[]	ph_;
     Shdr[]	sections_;
     char[]	shStrings_;

@@ -33,6 +33,7 @@ import debuginfo.debuginfo;
 import debuginfo.expr: EvalException;
 import debuginfo.language;
 import machine.machine;
+import target.target;
 
 interface Type: DebugItem
 {
@@ -40,10 +41,10 @@ interface Type: DebugItem
     string toString();
     bool coerce(MachineState, ref Value);
     string valueToString(string, MachineState, Location);
-    size_t byteWidth();
+    TargetSize byteWidth();
     Type underlyingType();
-    Type pointerType(uint);
-    Type referenceType(uint);
+    Type pointerType(TargetSize);
+    Type referenceType(TargetSize);
     Type modifierType(string modifier);
     bool isCharType();
     bool isIntegerType();
@@ -74,18 +75,18 @@ class TypeBase: Type
 	return false;
     }
     abstract string valueToString(string, MachineState, Location);
-    abstract size_t byteWidth();
+    abstract TargetSize byteWidth();
     Type underlyingType()
     {
 	return this;
     }
-    Type pointerType(uint width)
+    Type pointerType(TargetSize width)
     {
 	if (width in ptrTypes_)
 	    return ptrTypes_[width];
 	return (ptrTypes_[width] = new PointerType(lang_, this, width));
     }
-    Type referenceType(uint width)
+    Type referenceType(TargetSize width)
     {
 	if (width in refTypes_)
 	    return refTypes_[width];
@@ -113,14 +114,14 @@ class TypeBase: Type
 
 private:
     Language lang_;
-    Type[uint] ptrTypes_;
-    Type[uint] refTypes_;
+    Type[TargetSize] ptrTypes_;
+    Type[TargetSize] refTypes_;
     Type[string] modifierTypes_;
 }
 
 class IntegerType: TypeBase
 {
-    this(Language lang, string name, bool isSigned, uint byteWidth)
+    this(Language lang, string name, bool isSigned, TargetSize byteWidth)
     {
 	super(lang);
 	name_ = name;
@@ -201,11 +202,11 @@ class IntegerType: TypeBase
 	    if (isSigned) {
 		long val = state.readInteger(loc.readValue(state));
 		switch (byteWidth_) {
-		case 1:
+		case TS1:
 		    return format(fmt, cast(byte) val);
-		case 2:
+		case TS2:
 		    return format(fmt, cast(short) val);
-		case 4:
+		case TS4:
 		    return format(fmt, cast(int) val);
 		default:
 		    return format(fmt, val);
@@ -213,11 +214,11 @@ class IntegerType: TypeBase
 	    } else {
 		ulong val = state.readInteger(loc.readValue(state));
 		switch (byteWidth_) {
-		case 1:
+		case TS1:
 		    return format(fmt, cast(ubyte) val);
-		case 2:
+		case TS2:
 		    return format(fmt, cast(ushort) val);
-		case 4:
+		case TS4:
 		    return format(fmt, cast(uint) val);
 		default:
 		    return format(fmt, val);
@@ -226,7 +227,7 @@ class IntegerType: TypeBase
 	    }
 	}
 
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -250,12 +251,12 @@ class IntegerType: TypeBase
 private:
     string name_;
     bool isSigned_;
-    uint byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class CharType: IntegerType
 {
-    this(Language lang, string name, bool isSigned, uint byteWidth)
+    this(Language lang, string name, bool isSigned, TargetSize byteWidth)
     {
 	super(lang, name, isSigned, byteWidth);
     }
@@ -287,12 +288,12 @@ class CharType: IntegerType
 private:
     string name_;
     bool isSigned_;
-    uint byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class BooleanType: TypeBase
 {
-    this(Language lang, string name, uint byteWidth)
+    this(Language lang, string name, TargetSize byteWidth)
     {
 	super(lang);
 	name_ = name;
@@ -343,7 +344,7 @@ class BooleanType: TypeBase
 	    return state.readInteger(val) ? "true" : "false";
 	}
 
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -361,12 +362,12 @@ class BooleanType: TypeBase
 
 private:
     string name_;
-    uint byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class FloatType: TypeBase
 {
-    this(Language lang, string name, uint byteWidth)
+    this(Language lang, string name, TargetSize byteWidth)
     {
 	super(lang);
 	name_ = name;
@@ -438,7 +439,7 @@ class FloatType: TypeBase
 	    return format("%g", val);
 	}
 
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -461,12 +462,12 @@ class FloatType: TypeBase
 
 private:
     string name_;
-    uint byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class PointerType: TypeBase
 {
-    private this(Language lang, Type baseType, uint byteWidth)
+    private this(Language lang, Type baseType, TargetSize byteWidth)
     {
 	super(lang);
 	baseType_ = baseType;
@@ -523,7 +524,7 @@ class PointerType: TypeBase
 	    return v;
 	}
 
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -547,19 +548,19 @@ class PointerType: TypeBase
     Value dereference(MachineState state, Location loc)
     {
 	return new Value(new MemoryLocation(
-			 state.readInteger(loc.readValue(state)),
-			 baseType.byteWidth),
-		     baseType);
+                             state.readAddress(loc.readValue(state)),
+                             baseType.byteWidth),
+                         baseType);
     }
 
 private:
     Type baseType_;
-    uint byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class ReferenceType: TypeBase
 {
-    private this(Language lang, Type baseType, uint byteWidth)
+    private this(Language lang, Type baseType, TargetSize byteWidth)
     {
 	super(lang);
 	baseType_ = baseType;
@@ -584,7 +585,7 @@ class ReferenceType: TypeBase
 	    return v;
 	}
 
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -607,7 +608,7 @@ class ReferenceType: TypeBase
 
 private:
     Type baseType_;
-    uint byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class ModifierType: TypeBase
@@ -639,7 +640,7 @@ class ModifierType: TypeBase
 	{
 	    return baseType_.valueToString(fmt, state, loc);
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return baseType_.byteWidth;
 	}
@@ -689,7 +690,7 @@ class TypedefType: TypeBase
 	{
 	    return baseType_.valueToString(fmt, state, loc);
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return baseType_.byteWidth;
 	}
@@ -720,7 +721,7 @@ class CompoundType: TypeBase
 	Location loc;
     }
 
-    this(Language lang, string kind, string name, uint byteWidth)
+    this(Language lang, string kind, string name, TargetSize byteWidth)
     {
 	super(lang);
 	kind_ = kind;
@@ -766,7 +767,7 @@ class CompoundType: TypeBase
 	    }
 	    return lang_.renderStructConstant(s);
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -780,7 +781,7 @@ class CompoundType: TypeBase
 	}
     }
 
-    size_t length()
+    uint length()
     {
 	return fields_.length;
     }
@@ -804,7 +805,7 @@ class CompoundType: TypeBase
 private:
     string kind_;
     string name_;
-    uint byteWidth_;
+    TargetSize byteWidth_;
     Variable[] fields_;
     Function[] functions_;
 }
@@ -816,7 +817,7 @@ class EnumType: IntegerType
 	ulong value;
     }
 
-    this(Language lang, string name, uint byteWidth)
+    this(Language lang, string name, TargetSize byteWidth)
     {
 	super(lang, name, false, byteWidth);
     }
@@ -917,22 +918,22 @@ class ArrayType: TypeBase
 	return baseType_;
     }
 
-    void addDim(size_t indexBase, size_t count)
+    void addDim(TargetSize indexBase, TargetSize count)
     {
 	dims_ ~= dim(indexBase, count);
     }
 
-    size_t dims()
+    uint dims()
     {
 	return dims_.length;
     }
 
-    size_t indexBase(uint dim)
+    TargetSize indexBase(uint dim)
     {
 	return dims_[dim].indexBase;
     }
 
-    size_t count(uint dim)
+    TargetSize count(uint dim)
     {
 	return dims_[dim].count;
     }
@@ -962,12 +963,12 @@ class ArrayType: TypeBase
 	{
 	    if (lang_.isStringType(this))
 		return lang_.renderStringConstant(state, this, loc);
-	    size_t off = 0;
+	    TargetSize off;
 	    return valueToString(fmt, state, loc, off, 0);
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
-	    size_t n = 1;
+	    TargetSize n = TS1;
 	    foreach (d; dims_)
 		n *= d.count;
 
@@ -998,11 +999,11 @@ class ArrayType: TypeBase
 
 private:
     string valueToString(string fmt, MachineState state,
-			 Location loc, ref size_t off,
-			 size_t di)
+			 Location loc, ref TargetSize off,
+			 uint di)
     {
 	string v;
-	for (size_t i = 0; i < dims_[di].count; i++) {
+	for (uint i = 0; i < dims_[di].count; i++) {
 	    if (i > 0 && i <= 3)
 		v ~= ", ";
 	    if (i == 3)
@@ -1021,8 +1022,8 @@ private:
 	return lang_.renderArrayConstant(v);
     }
     struct dim {
-	size_t indexBase;
-	size_t count;
+	TargetSize indexBase;
+	TargetSize count;
     }
 
     Type baseType_;
@@ -1031,7 +1032,7 @@ private:
 
 class DArrayType: TypeBase
 {
-    this(Language lang, Type baseType, size_t byteWidth)
+    this(Language lang, Type baseType, TargetSize byteWidth)
     {
 	super(lang);
 	baseType_ = baseType;
@@ -1055,8 +1056,8 @@ class DArrayType: TypeBase
 		return lang_.renderStringConstant(state, this, loc);
 
 	    ubyte[] val = loc.readValue(state);
-	    ulong len = state.readInteger(val[0..state.pointerWidth]);
-	    ulong addr = state.readInteger(val[state.pointerWidth..$]);
+	    TargetSize len = state.readSize(val[0..state.pointerWidth]);
+	    TargetAddress addr = state.readAddress(val[state.pointerWidth..$]);
 	    string v;
 	    for (auto i = 0; i < len; i++) {
 		if (i > 0)
@@ -1071,7 +1072,7 @@ class DArrayType: TypeBase
 	    }
 	    return lang_.renderArrayConstant(v);
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -1087,12 +1088,12 @@ class DArrayType: TypeBase
 
 private:
     Type baseType_;
-    size_t byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class AArrayType: TypeBase
 {
-    this(Language lang, Type baseType, Type keyType, size_t byteWidth)
+    this(Language lang, Type baseType, Type keyType, TargetSize byteWidth)
     {
 	super(lang);
 	baseType_ = baseType;
@@ -1141,7 +1142,7 @@ class AArrayType: TypeBase
 
 	    return lang_.renderArrayConstant(res);
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return byteWidth_;
 	}
@@ -1180,34 +1181,35 @@ private:
 	 * location which describes the aaA*[] array.
 	 */
 	auto pw = state.pointerWidth;
-	auto p = state.readInteger(loc.readValue(state));
+	auto p = state.readAddress(loc.readValue(state));
 	if (!p)
 	    return;
-	loc = new MemoryLocation(p, 2*pw);
+	loc = new MemoryLocation(p, cast(TargetSize) (2*pw));
 	auto val = loc.readValue(state);
-	auto aaAlen = state.readInteger(val[0..pw]);
-	auto aaAptr = state.readInteger(val[pw..$]);
+	auto aaAlen = state.readSize(val[0..pw]);
+	auto aaAptr = state.readAddress(val[pw..$]);
 
 	for (auto i = 0; i < aaAlen; i++) {
-	    loc = new MemoryLocation(aaAptr + i * pw,
+	    loc = new MemoryLocation(cast(TargetAddress) (aaAptr + i * pw),
 				     pw);
-	    auto aaAp = state.readInteger(loc.readValue(state));
+	    auto aaAp = state.readAddress(loc.readValue(state));
 	    
-	    void visitNode(ulong p)
+	    void visitNode(TargetAddress p)
 	    {
 		if (!p)
 		    return;
 
-		loc = new MemoryLocation(p, 3*pw);
-		auto keyLoc = new MemoryLocation(p + 3*pw,
-						 keyType_.byteWidth);
-		auto valLoc = new MemoryLocation(p + 3*pw
-						 + keyType_.byteWidth,
-						 baseType_.byteWidth);
+		loc = new MemoryLocation(p, cast(TargetSize) (3*pw));
+		auto keyLoc = new MemoryLocation(
+                    cast(TargetAddress) (p + 3*pw),
+                    keyType_.byteWidth);
+		auto valLoc = new MemoryLocation(
+                    cast(TargetAddress) (p + 3*pw + keyType_.byteWidth),
+                    baseType_.byteWidth);
 		auto rec = loc.readValue(state);
-		visitNode(state.readInteger(rec[0..pw]));
+		visitNode(state.readAddress(rec[0..pw]));
 		dg(keyLoc, valLoc);
-		visitNode(state.readInteger(rec[pw..2*pw]));
+		visitNode(state.readAddress(rec[pw..2*pw]));
 	    }
 
 	    visitNode(aaAp);
@@ -1216,7 +1218,7 @@ private:
 
     Type baseType_;
     Type keyType_;
-    size_t byteWidth_;
+    TargetSize byteWidth_;
 }
 
 class FunctionType: TypeBase
@@ -1272,9 +1274,9 @@ class FunctionType: TypeBase
 	    assert(loc.hasAddress(state));
 	    return format("%#x", loc.address(state));
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
-	    return 0;
+	    return TS0;
 	}
 	bool isCharType()
 	{
@@ -1326,9 +1328,9 @@ class VoidType: TypeBase
 	{
 	    return "void";
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
-	    return 1;
+	    return TS1;
 	}
 	bool isCharType()
 	{
@@ -1367,15 +1369,15 @@ class UserType: TypeBase
 	{
 	    return type_.valueToString(fmt, state, loc);
 	}
-	size_t byteWidth()
+	TargetSize byteWidth()
 	{
 	    return type_.byteWidth;
 	}
-	Type pointerType(uint width)
+	Type pointerType(TargetSize width)
 	{
 	    return type_.pointerType(width);
 	}
-	Type referenceType(uint width)
+	Type referenceType(TargetSize width)
 	{
 	    return type_.referenceType(width);
 	}

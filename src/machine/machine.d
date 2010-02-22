@@ -45,30 +45,30 @@ struct PtraceCommand
  * A representation of the target machine. Registers are indexed by
  * dwarf register number.
  */
-interface MachineState: Scope
+class MachineState: Scope
 {
     void dumpState();
 
     /**
      * Return the machine's program counter register.
      */
-    ulong pc();
+    TargetAddress pc();
 
     /**
      * Set the program counter register.
      */
-    void pc(ulong);
+    void pc(TargetAddress);
 
     /**
      * Return the thread pointer register.
      */
-    ulong tp();
+    TargetAddress tp();
 
     /**
      * Return the address of the TLS object at the given module index
      * and offset.
      */
-    ulong tls_get_addr(uint index, ulong offset);
+    TargetAddress tls_get_addr(uint index, ulong offset);
 
     /**
      * Return a set of ptrace commands to read the machine state from
@@ -105,7 +105,7 @@ interface MachineState: Scope
     /**
      * Return the width in bytes of a general register
      */
-    size_t grWidth(int greg);
+    TargetSize grWidth(int greg);
 
     /**
      * Return the stack pointer register index.
@@ -115,7 +115,7 @@ interface MachineState: Scope
     /**
      * Return the number of general registers
      */
-    size_t grCount();
+    uint grCount();
 
     /**
      * Print a representation of the floating point state.
@@ -136,7 +136,7 @@ interface MachineState: Scope
      * Read raw register bytes in target byte order. Register index
      * corresponds to dwarf register number.
      */
-    ubyte[] readRegister(uint regno, size_t bytes);
+    ubyte[] readRegister(uint regno, TargetSize bytes);
 
     /**
      * Write raw register bytes in target byte order. Register index
@@ -160,12 +160,28 @@ interface MachineState: Scope
     /**
      * Return the width of a pointer in bytes
      */
-    uint pointerWidth();
+    TargetSize pointerWidth();
 
     /**
      * Convert an integer in machine-native format to host format.
      */
     ulong readInteger(ubyte[] bytes);
+
+    /**
+     * Convert an address in machine-native format to host format.
+     */
+    TargetAddress readAddress(ubyte[] bytes)
+    {
+        return cast(TargetAddress) readInteger(bytes);
+    }
+
+    /**
+     * Convert a size in machine-native format to host format.
+     */
+    TargetSize readSize(ubyte[] bytes)
+    {
+        return cast(TargetSize) readInteger(bytes);
+    }
 
     /**
      * Convert an integer in host format to machine-native format.
@@ -185,17 +201,17 @@ interface MachineState: Scope
     /**
      * Read from the machine's memory.
      */
-    ubyte[] readMemory(ulong address, size_t bytes);
+    ubyte[] readMemory(TargetAddress address, TargetSize bytes);
 
     /**
      * Write to the machine's memory.
      */
-    void writeMemory(ulong address, ubyte[] toWrite);
+    void writeMemory(TargetAddress address, ubyte[] toWrite);
 
     /**
      * Call a function in the target.
      */
-    Value call(ulong address, Type returnType, Value[] args);
+    Value call(TargetAddress address, Type returnType, Value[] args);
 
     /**
      * Return a value which represents a function return value of the
@@ -208,13 +224,13 @@ interface MachineState: Scope
      * any flow control instructions in the range. If there are none,
      * return end.
      */
-    ulong findFlowControl(ulong start, ulong end);
+    TargetAddress findFlowControl(TargetAddress start, TargetAddress end);
 
     /**
      * Scan the interval [start..end) and return the target address of
      * the first unconditional jump in the range or end if there are none.
      */
-    ulong findJump(ulong start, ulong end);
+    TargetAddress findJump(TargetAddress start, TargetAddress end);
 
     /**
      * Disassemble the instruction at 'address' advancing the value of
@@ -222,11 +238,18 @@ interface MachineState: Scope
      * delegate 'lookupAddress' is used to translate machine addresses
      * to a symbolic equivalent.
      */
-    string disassemble(ref ulong address,
-		       string delegate(ulong) lookupAddress);
+    string disassemble(ref TargetAddress address,
+		       string delegate(TargetAddress) lookupAddress);
 
     /**
      * Make a copy of the machine state
      */
     MachineState dup();
+
+    // Scope
+    abstract string[] contents(MachineState);
+    abstract bool lookup(string, MachineState, out DebugItem);
+    abstract bool lookupStruct(string, out Type);
+    abstract bool lookupUnion(string, out Type);
+    abstract bool lookupTypedef(string, out Type);
 }
