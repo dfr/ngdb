@@ -158,15 +158,15 @@ class ArmState: MachineState
 	{
 	}
 
-	void setGR(uint gregno, ulong val)
+	void setGR(uint gregno, MachineRegister val)
 	{
 	    gregs_[gregno] = val;
 	    grdirty_ = true;
 	}
 
-	ulong getGR(uint gregno)
+	MachineRegister getGR(uint gregno)
 	{
-	    return gregs_[gregno];
+	    return cast(MachineRegister) gregs_[gregno];
 	}
 
 	TargetSize grWidth(int greg)

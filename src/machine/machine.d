@@ -41,6 +41,8 @@ struct PtraceCommand
     uint	data;
 }
 
+typedef ulong MachineRegister;
+
 /**
  * A representation of the target machine. Registers are indexed by
  * dwarf register number.
@@ -95,12 +97,12 @@ class MachineState: Scope
     /**
      * Set a general register by register number.
      */
-    void setGR(uint gregno, ulong val);
+    void setGR(uint gregno, MachineRegister val);
 
     /**
      * Get a general register by register number.
      */
-    ulong getGR(uint gregno);
+    MachineRegister getGR(uint gregno);
 
     /**
      * Return the width in bytes of a general register

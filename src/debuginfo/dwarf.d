@@ -3262,7 +3262,8 @@ class FDE
 	if (fdeFs.regs[cie.returnAddress].rule == RLoc.Rule.undefined)
 	    return null;
 	MachineState newState = state.dup;
-	ulong cfa = state.getGR(fdeFs.cfaReg) + fdeFs.cfaOffset;
+	MachineRegister cfa = cast(MachineRegister)
+            (state.getGR(fdeFs.cfaReg) + fdeFs.cfaOffset);
 	foreach (i, rl; fdeFs.regs) {
 	    long off;
 	    ubyte[] b;
@@ -3277,12 +3278,12 @@ class FDE
 		off = rl.N;
 		b = state.readMemory(cast(TargetAddress) (cfa + off),
                                      cast(TargetSize) (dw.obj_.is64 ? 8 : 4));
-		newState.setGR(i, dw.obj_.read(b));
+		newState.setGR(i, cast(MachineRegister) dw.obj_.read(b));
 		break;
 
 	    case RLoc.Rule.valOffsetN:
 		off = rl.N;
-		newState.setGR(i, cfa + off);
+		newState.setGR(i, cast(MachineRegister) (cfa + off));
 		break;
 		    
 	    case RLoc.Rule.registerR:
