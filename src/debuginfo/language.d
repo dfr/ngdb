@@ -36,7 +36,7 @@ import debuginfo.debuginfo;
 import debuginfo.expr;
 import debuginfo.types;
 import machine.machine;
-import target.target: TargetException;
+import target.target;
 
 class Language
 {
@@ -49,7 +49,7 @@ class Language
     {
 	return voidType_;
     }
-    Type integerType(string name, bool isSigned, uint byteWidth)
+    Type integerType(string name, bool isSigned, TargetSize byteWidth)
     {
 	scope IntegerType t = new IntegerType(this, name, isSigned, byteWidth);
 	auto p = t in integerTypes_;
@@ -59,7 +59,7 @@ class Language
 	integerTypes_[ty] = ty;
 	return ty;
     }
-    Type charType(string name, bool isSigned, uint byteWidth)
+    Type charType(string name, bool isSigned, TargetSize byteWidth)
     {
 	scope CharType t = new CharType(this, name, isSigned, byteWidth);
 	auto p = t in charTypes_;
@@ -69,7 +69,7 @@ class Language
 	charTypes_[ty] = ty;
 	return ty;
     }
-    Type booleanType(string name, uint byteWidth)
+    Type booleanType(string name, TargetSize byteWidth)
     {
 	scope BooleanType t = new BooleanType(this, name, byteWidth);
 	auto p = t in booleanTypes_;
@@ -79,7 +79,7 @@ class Language
 	booleanTypes_[ty] = ty;
 	return ty;
     }
-    Type floatType(string name, uint byteWidth)
+    Type floatType(string name, TargetSize byteWidth)
     {
 	scope FloatType t = new FloatType(this, name, byteWidth);
 	auto p = t in floatTypes_;
@@ -183,9 +183,10 @@ class CLikeLanguage: Language
 	{
 	    PointerType pt = cast(PointerType) type;
 	    if (pt) {
-		ulong p = state.readInteger(loc.readValue(state));
-		loc = new MemoryLocation(p, 0);
-		return _stringConstant(state, loc, 0, true);
+                ulong p = state.readInteger(loc.readValue(state));
+		loc = new MemoryLocation(cast(TargetAddress) p,
+                                         TS0);
+		return _stringConstant(state, loc, TS0, true);
 	    }
 	    ArrayType at = cast(ArrayType) type;
 	    if (at)
@@ -242,11 +243,11 @@ class CLikeLanguage: Language
 	}
     }
 
-    string _stringConstant(MachineState state, Location loc, size_t len,
+    string _stringConstant(MachineState state, Location loc, TargetSize len,
 			   bool zt)
     {
 	string sv;
-	uint off = 0;
+	TargetSize off;
 	bool more;
 	string specials[char] = [
 	    '\0': "\\0",
@@ -264,7 +265,7 @@ class CLikeLanguage: Language
 	    sv = "\"";
 	    more = zt ? true : len > 0;
 	    while (more) {
-		auto bloc = loc.subrange(off++, 1, state);
+		auto bloc = loc.subrange(off++, TS1, state);
 		c = cast(char) state.readInteger(bloc.readValue(state));
 		if (c || !zt) {
 		    if (isprint(c)) {
@@ -931,14 +932,15 @@ class CLikeLanguage: Language
 	    lex.consume;
 	    return new CharConstantExpr(this,
 					(cast(CharToken) tok).ch,
-					charType("char", true, 1));
+					charType("char", true, TS1));
 	}
 	if (tok.id == "string literal") {
 	    lex.consume;
-	    auto cTy = charType("char", true, 1);
+	    auto cTy = charType("char", true, TS1);
 	    auto aTy = new ArrayType(this, cTy);
 	    auto s = tok.value ~ "\0";
-	    aTy.addDim(0, s.length);
+	    aTy.addDim(TS0,
+                       cast(TargetSize) s.length);
 	    return new StringConstantExpr(this, s, aTy);
 	}
 	if (tok.id == "(") {
@@ -1072,46 +1074,46 @@ class CLikeLanguage: Language
 		ty = voidType;
 	    else if (specs == ["char"]
 		     || specs == ["char", "signed"])
-		ty = charType("char", true, 1);
+		ty = charType("char", true, TS1);
 	    else if (specs == ["char", "unsigned"])
-		ty = charType("unsigned char", false, 1);
+		ty = charType("unsigned char", false, TS1);
 	    else if (specs == ["short"]
 		     || specs == ["short", "signed"]
 		     || specs == ["int", "short"]
 		     || specs == ["int", "short", "signed"])
-		ty = integerType("short", true, 2);
+		ty = integerType("short", true, TS2);
 	    else if (specs == ["short", "unsigned"]
 		     || specs == ["int", "short", "unsigned"])
-		ty = integerType("unsigned short", false, 2);
+		ty = integerType("unsigned short", false, TS2);
 	    else if (specs == ["int"]
 		     || specs == ["signed"]
 		     || specs == ["int", "signed"])
-		ty = integerType("int", true, 4);
+		ty = integerType("int", true, TS4);
 	    else if (specs == ["unsigned"]
 		     || specs == ["int", "unsigned"])
-		ty = integerType("unsigned int", false, 4);
+		ty = integerType("unsigned int", false, TS4);
 	    else if (specs == ["long"]
 		     || specs == ["long", "signed"]
 		     || specs == ["int", "long"]
 		     || specs == ["int", "long", "signed"])
-		ty = integerType("long", true, 4); // XXX 64bit
+		ty = integerType("long", true, TS4); // XXX 64bit
 	    else if (specs == ["long", "unsigned"]
 		     || specs == ["int", "long", "unsigned"])
-		ty = integerType("unsigned long", false, 4); // XXX 64bit
+		ty = integerType("unsigned long", false, TS4); // XXX 64bit
 	    else if (specs == ["long", "long"]
 		     || specs == ["long", "long", "signed"]
 		     || specs == ["int", "long", "long"]
 		     || specs == ["int", "long", "long", "signed"])
-		ty = integerType("long long", true, 8);
+		ty = integerType("long long", true, TS8);
 	    else if (specs == ["long", "long", "unsigned"]
 		     || specs == ["int", "long", "long", "unsigned"])
-		ty = integerType("unsigned long long", false, 8);
+		ty = integerType("unsigned long long", false, TS8);
 	    else if (specs == ["float"])
-		ty = floatType("float", 4);
+		ty = floatType("float", TS4);
 	    else if (specs == ["double"])
-		ty = floatType("double", 8);
+		ty = floatType("double", TS8);
 	    else if (specs == ["double", "long"])
-		ty = floatType("long double", 12);
+		ty = floatType("long double", TS12);
 	    else
 		error(lastTok, "unrecognised type specifiers");
 	} else {
@@ -1441,7 +1443,7 @@ class CLikeLanguage: Language
 	Type transform()
 	{
 	    auto ty = base_.transform;
-	    ty = ty.pointerType(4);	// XXX 64bit
+	    ty = ty.pointerType(TS4);	// XXX 64bit
 	    foreach (q; quals_)
 		ty = ty.modifierType(q);
 	    return ty;
@@ -1460,7 +1462,8 @@ class CLikeLanguage: Language
 	Type transform()
 	{
 	    auto ty = new ArrayType(lang_, base_.transform);
-	    ty.addDim(0, dim_);
+	    ty.addDim(TS0,
+                      cast(TargetSize) dim_);
 	    return ty;
 	}
 	Language lang_;
@@ -1586,9 +1589,12 @@ class DLanguage: CLikeLanguage
 	     * quantities - the length followed by the base pointer.
 	     */
 	    ubyte[] val = loc.readValue(state);
-	    ulong ptr = state.readInteger(val[state.pointerWidth..$]);
-	    ulong len = state.readInteger(val[0..state.pointerWidth]);
-	    if (len > 256) len = 256;	// XXX
+	    TargetAddress ptr = cast(TargetAddress)
+                state.readInteger(val[state.pointerWidth..$]);
+	    TargetSize len = cast(TargetSize)
+                state.readInteger(val[0..state.pointerWidth]);
+            const auto biglen = cast(TargetSize) 256;
+	    if (len > biglen) len = biglen;	// XXX
 	    loc = new MemoryLocation(ptr, len);
 	    return _stringConstant(state, loc, len, false);
 	}
@@ -1795,14 +1801,15 @@ class DLanguage: CLikeLanguage
 	    lex.consume;
 	    return new CharConstantExpr(this,
 					(cast(CharToken) tok).ch,
-					charType("char", false, 1));
+					charType("char", false, TS1));
 	}
 	if (tok.id == "string literal") {
 	    lex.consume;
-	    auto cTy = charType("char", false, 1);
+	    auto cTy = charType("char", false, TS1);
 	    auto aTy = new ArrayType(this, cTy);
 	    auto s = tok.value;
-	    aTy.addDim(0, s.length);
+	    aTy.addDim(TS0,
+                       cast(TargetSize) s.length);
 	    return new StringConstantExpr(this, s, aTy);
 	}
 	auto ty = typeName(lex);
@@ -1917,49 +1924,49 @@ class DLanguage: CLikeLanguage
 	switch (tok.id) {
 	case "bool":
 	    lex.consume;
-	    return booleanType(tok.id, 1);
+	    return booleanType(tok.id, TS1);
 	case "byte":
 	    lex.consume;
-	    return integerType(tok.id, true, 1);
+	    return integerType(tok.id, true, TS1);
 	case "ubyte":
 	    lex.consume;
-	    return integerType(tok.id, false, 1);
+	    return integerType(tok.id, false, TS1);
 	case "short":
 	    lex.consume;
-	    return integerType(tok.id, true, 2);
+	    return integerType(tok.id, true, TS2);
 	case "ushort":
 	    lex.consume;
-	    return integerType(tok.id, false, 2);
+	    return integerType(tok.id, false, TS2);
 	case "int":
 	    lex.consume;
-	    return integerType(tok.id, true, 4);
+	    return integerType(tok.id, true, TS4);
 	case "uint":
 	    lex.consume;
-	    return integerType(tok.id, false, 4);
+	    return integerType(tok.id, false, TS4);
 	case "long":
 	    lex.consume;
-	    return integerType(tok.id, true, 8);
+	    return integerType(tok.id, true, TS8);
 	case "ulong":
 	    lex.consume;
-	    return integerType(tok.id, false, 8);
+	    return integerType(tok.id, false, TS8);
 	case "char":
 	    lex.consume;
-	    return charType(tok.id, false, 1);
+	    return charType(tok.id, false, TS1);
 	case "wchar":
 	    lex.consume;
-	    return charType(tok.id, false, 2);
+	    return charType(tok.id, false, TS2);
 	case "dchar":
 	    lex.consume;
-	    return charType(tok.id, false, 4);
+	    return charType(tok.id, false, TS4);
 	case "float":
 	    lex.consume;
-	    return floatType(tok.id, 4);
+	    return floatType(tok.id, TS4);
 	case "double":
 	    lex.consume;
-	    return floatType(tok.id, 8);
+	    return floatType(tok.id, TS8);
 	case "real":
 	    lex.consume;
-	    return floatType(tok.id, 12);
+	    return floatType(tok.id, TS12);
 	case "ifloat":
 	case "idouble":
 	case "ireal":
@@ -2215,7 +2222,8 @@ class DLanguage: CLikeLanguage
 	}
 	Type transform()
 	{
-	    auto ty = new DArrayType(lang_, base_.transform, 8); // XXX 64bit
+	    auto ty = new DArrayType(lang_, base_.transform,
+                                     TS8); // XXX 64bit
 	    return ty;
 	}
 	Language lang_;

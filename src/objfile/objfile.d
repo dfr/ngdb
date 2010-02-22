@@ -33,8 +33,8 @@ import machine.machine;
 struct Symbol
 {
     string	name;
-    ulong	value;
-    ulong	size;
+    TargetAddress value;
+    TargetSize	size;
     int		type;
     int		binding;
     int		section;
@@ -64,13 +64,13 @@ class Objfile: Endian
 
     abstract void write(ulong v, out ulong res);
 
-    abstract Symbol* lookupSymbol(ulong addr);
+    abstract Symbol* lookupSymbol(TargetAddress addr);
 
     abstract Symbol* lookupSymbol(string name);
 
-    abstract ulong entry();
+    abstract TargetAddress entry();
 
-    abstract ulong offset();
+    abstract TargetAddress offset();
 
     abstract uint tlsindex();
 
@@ -83,7 +83,7 @@ class Objfile: Endian
     abstract void enumerateNeededLibraries(Target target,
 					   void delegate(string) dg);
 
-    static Objfile open(string file, ulong base)
+    static Objfile open(string file, TargetAddress base)
     {
 	Objfile obj;
 	foreach (f; factories_) {
@@ -94,10 +94,10 @@ class Objfile: Endian
 	return null;
     }
 
-    static void addFileType(Objfile function(string, ulong) fn)
+    static void addFileType(Objfile function(string, TargetAddress) fn)
     {
 	factories_ ~= fn;
     }
 
-    static Objfile function(string, ulong) factories_[];
+    static Objfile function(string, TargetAddress) factories_[];
 }

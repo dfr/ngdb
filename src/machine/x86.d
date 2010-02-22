@@ -114,15 +114,16 @@ class X86State: MachineState
     static this()
     {
 	auto lang = CLikeLanguage.instance;
-	grType_ = lang.integerType("uint32_t", false, 4);
-	frType_ = lang.floatType("real", 10);
+	grType_ = lang.integerType("uint32_t", false, TS4);
+	frType_ = lang.floatType("real", TS10);
 
 	void addXmmP(string name, Type ty)
 	{
 	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(0, 16 / ty.byteWidth);
+	    aTy.addDim(TS0,
+                       cast(TargetSize) (16 / ty.byteWidth));
 	    (cast(CompoundType) xmmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(16), aTy)));
+		new Value(new FirstFieldLocation(TS16), aTy)));
 	}
 
 	void addXmmS(string name, Type ty)
@@ -131,33 +132,34 @@ class X86State: MachineState
 		new Value(new FirstFieldLocation(ty.byteWidth), ty)));
 	}
 
-	xmmType_ = new CompoundType(lang, "union", "xmmreg_t", 16);
-	addXmmS("ss", lang.floatType("float", 4));
-	addXmmS("sd", lang.floatType("double", 8));
-	addXmmP("ps", lang.floatType("float", 4));
-	addXmmP("pd", lang.floatType("double", 8));
-	addXmmP("pb", lang.integerType("uint8_t", false, 1));
-	addXmmP("pw", lang.integerType("uint16_t", false, 2));
-	addXmmP("pi", lang.integerType("uint32_t", false, 4));
-	addXmmP("psb", lang.integerType("int8_t", true, 1));
-	addXmmP("psw", lang.integerType("int16_t", true, 2));
-	addXmmP("psi", lang.integerType("int32_t", true, 4));
+	xmmType_ = new CompoundType(lang, "union", "xmmreg_t", TS16);
+	addXmmS("ss", lang.floatType("float", TS4));
+	addXmmS("sd", lang.floatType("double", TS8));
+	addXmmP("ps", lang.floatType("float", TS4));
+	addXmmP("pd", lang.floatType("double", TS8));
+	addXmmP("pb", lang.integerType("uint8_t", false, TS1));
+	addXmmP("pw", lang.integerType("uint16_t", false, TS2));
+	addXmmP("pi", lang.integerType("uint32_t", false, TS4));
+	addXmmP("psb", lang.integerType("int8_t", true, TS1));
+	addXmmP("psw", lang.integerType("int16_t", true, TS2));
+	addXmmP("psi", lang.integerType("int32_t", true, TS4));
 
 	void addMmP(string name, Type ty)
 	{
 	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(0, 8 / ty.byteWidth);
+	    aTy.addDim(TS0,
+                       cast(TargetSize) (8 / ty.byteWidth));
 	    (cast(CompoundType) mmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(8), aTy)));
+		new Value(new FirstFieldLocation(TS8), aTy)));
 	}
 
-	mmType_ = new CompoundType(lang, "union", "mmreg_t", 16);
-	addMmP("pb", lang.integerType("uint8_t", false, 1));
-	addMmP("pw", lang.integerType("uint16_t", false, 2));
-	addMmP("pi", lang.integerType("uint32_t", false, 4));
-	addMmP("psb", lang.integerType("int8_t", true, 1));
-	addMmP("psw", lang.integerType("int16_t", true, 2));
-	addMmP("psi", lang.integerType("int32_t", true, 4));
+	mmType_ = new CompoundType(lang, "union", "mmreg_t", TS16);
+	addMmP("pb", lang.integerType("uint8_t", false, TS1));
+	addMmP("pw", lang.integerType("uint16_t", false, TS2));
+	addMmP("pi", lang.integerType("uint32_t", false, TS4));
+	addMmP("psb", lang.integerType("int8_t", true, TS1));
+	addMmP("psw", lang.integerType("int16_t", true, TS2));
+	addMmP("psi", lang.integerType("int32_t", true, TS4));
     }
 
     override {
@@ -177,29 +179,31 @@ class X86State: MachineState
 	    writefln("%6s:%08x ", "gs", regs_.r_gs);
 	}
 
-	ulong pc()
+	TargetAddress pc()
 	{
-	    return regs_.r_eip;
+	    return cast(TargetAddress) regs_.r_eip;
 	}
 
-	void pc(ulong pc)
+	void pc(TargetAddress pc)
 	{
 	    regs_.r_eip = pc;
 	    grdirty_ = true;
 	}
 
-	ulong tp()
+	TargetAddress tp()
 	{
-	    return tp_;
+	    return cast(TargetAddress) tp_;
 	}
 
-	ulong tls_get_addr(uint index, ulong offset)
+	TargetAddress tls_get_addr(uint index, ulong offset)
 	{
 	    if (!tp_)
-		return 0;
-	    ulong dtv = readInteger(readMemory(tp_ + 4, 4));
-	    ulong base = readInteger( readMemory(dtv + 4 + 4*index, 4));
-	    return base + offset;
+		return cast(TargetAddress) 0;
+	    ulong dtv = readInteger(readMemory(cast(TargetAddress) (tp_ + 4),
+                                               TS4));
+	    ulong base = readInteger(readMemory(cast(TargetAddress) (dtv + 4 + 4*index),
+                                                TS4));
+	    return cast(TargetAddress) (base + offset);
 	}
 
 	PtraceCommand[] ptraceReadCommands()
@@ -264,9 +268,9 @@ class X86State: MachineState
 	    return *grAddr(gregno);
 	}
 
-	size_t grWidth(int greg)
+	TargetSize grWidth(int greg)
 	{
-	    return 4;
+	    return TS4;
 	}
 
 	uint spregno()
@@ -274,7 +278,7 @@ class X86State: MachineState
 	    return 4;
 	}
 
-	size_t grCount()
+	uint grCount()
 	{
 	    return EFLAGS + 1;
 	}
@@ -390,7 +394,7 @@ class X86State: MachineState
 	    *cast(xmmreg32*) regs = fpregs_;
 	}
 
-	ubyte[] readRegister(uint regno, size_t bytes)
+	ubyte[] readRegister(uint regno, TargetSize bytes)
 	{
 	    ubyte[] v;
 	    if (regno <= TRAPNO) {
@@ -472,9 +476,9 @@ class X86State: MachineState
 	    grdirty_ = true;
 	}
 
-	uint pointerWidth()
+	TargetSize pointerWidth()
 	{
-	    return 4;
+            return cast(TargetSize)  4;
 	}
 
 	ulong readInteger(ubyte[] bytes)
@@ -562,17 +566,17 @@ class X86State: MachineState
 	    }
 	}
 
-	ubyte[] readMemory(ulong address, size_t bytes)
+	ubyte[] readMemory(TargetAddress address, TargetSize bytes)
 	{
 	    return target_.readMemory(address, bytes);
 	}
 
-	void writeMemory(ulong address, ubyte[] toWrite)
+	void writeMemory(TargetAddress address, ubyte[] toWrite)
 	{
 	    target_.writeMemory(address, toWrite);
 	}
 
-	Value call(ulong address, Type returnType, Value[] args)
+	Value call(TargetAddress address, Type returnType, Value[] args)
 	{
 	    X86State saveState = new X86State(target_);
 	    saveState.regs_ = regs_;
@@ -628,7 +632,7 @@ class X86State: MachineState
 	     * stack 16-byte aligned here.
 	     */
 	    if (argval.length > 0)
-		writeMemory(newFrame + 8, argval);
+		writeMemory(cast(TargetAddress) (newFrame + 8), argval);
 
 	    static class callBreakpoint: TargetBreakpointListener
 	    {
@@ -647,7 +651,7 @@ class X86State: MachineState
 	     */
 	    ubyte[4] ret;
 	    writeInteger(target_.entry, ret);
-	    writeMemory(newFrame + 4, ret);
+	    writeMemory(cast(TargetAddress) (newFrame + 4), ret);
 	    auto bpl = new callBreakpoint;
 	    target_.setBreakpoint(target_.entry, bpl);
 
@@ -696,14 +700,16 @@ class X86State: MachineState
 	    version (linux)
 		auto regStructSize = 0;
 	    if (cTy && cTy.byteWidth > regStructSize) {
-		retval = readMemory(regs_.r_eax, cTy.byteWidth);
+		retval = readMemory(cast(TargetAddress) regs_.r_eax,
+                                    cTy.byteWidth);
 	    } else if (returnType.isNumericType && !returnType.isIntegerType) {
 		retval = readRegister(ST0, returnType.byteWidth);
 	    } else if (returnType.byteWidth <= 4) {
 		retval = readRegister(EAX, returnType.byteWidth);
 	    } else if (returnType.byteWidth <= 8) {
-		retval = readRegister(EAX, 4)
-		    ~ readRegister(EDX, returnType.byteWidth - 4);
+		retval = readRegister(EAX, TS4)
+		    ~ readRegister(EDX,
+                                   cast(TargetSize) (returnType.byteWidth - 4));
 	    } else
 		throw new EvalException(
 		    "Can't read return value for function call");
@@ -711,46 +717,46 @@ class X86State: MachineState
 	    return new Value(new ConstantLocation(retval), returnType);
 	}
 
-	ulong findFlowControl(ulong start, ulong end)
+	TargetAddress findFlowControl(TargetAddress start, TargetAddress end)
 	{
-	    char readByte(ulong loc) {
-		ubyte[] t = readMemory(loc, 1);
+	    char readByte(TargetAddress loc) {
+		ubyte[] t = readMemory(loc, TS1);
 		return cast(char) t[0];
 	    }
 
 	    Disassembler dis = new Disassembler;
-	    ulong loc = start;
+	    TargetAddress loc = start;
 	    while (loc < end) {
-		ulong tloc = loc;
+		TargetAddress tloc = loc;
 		if (dis.isFlowControl(loc, &readByte))
 		    return tloc;
 	    }
 	    return end;
 	}
 
-	ulong findJump(ulong start, ulong end)
+	TargetAddress findJump(TargetAddress start, TargetAddress end)
 	{
-	    char readByte(ulong loc) {
-		ubyte[] t = readMemory(loc, 1);
+	    char readByte(TargetAddress loc) {
+		ubyte[] t = readMemory(loc, TS1);
 		return cast(char) t[0];
 	    }
 
 	    Disassembler dis = new Disassembler;
-	    ulong loc = start;
+	    TargetAddress loc = start;
 	    while (loc < end) {
-		ulong tloc = loc;
-		ulong target;
+		TargetAddress tloc = loc;
+		TargetAddress target;
 		if (dis.isJump(loc, target, &readByte))
 		    return target;
 	    }
 	    return end;
 	}
 
-	string disassemble(ref ulong address,
-			   string delegate(ulong) lookupAddress)
+	string disassemble(ref TargetAddress address,
+			   string delegate(TargetAddress) lookupAddress)
 	{
-	    char readByte(ulong loc) {
-		ubyte[] t = readMemory(loc, 1);
+	    char readByte(TargetAddress loc) {
+		ubyte[] t = readMemory(loc, TS1);
 		return cast(char) t[0];
 	    }
 
@@ -984,15 +990,17 @@ class X86_64State: MachineState
     static this()
     {
 	auto lang = CLikeLanguage.instance;
-	grType_ = lang.integerType("uint64_t", false, 8);
-	frType_ = lang.floatType("real", 10);
+	grType_ = lang.integerType("uint64_t", false, TS8);
+	frType_ = lang.floatType("real", TS10);
 
 	void addXmmP(string name, Type ty)
 	{
 	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(0, 16 / ty.byteWidth);
-	    (cast(CompoundType) xmmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(16), aTy)));
+	    aTy.addDim(TS0,
+                       cast(TargetSize) (16 / ty.byteWidth));
+	    (cast(CompoundType) xmmType_).addField(
+                new Variable(name, new Value(new FirstFieldLocation(
+                                                 TS16), aTy)));
 	}
 
 	void addXmmS(string name, Type ty)
@@ -1001,33 +1009,34 @@ class X86_64State: MachineState
 		new Value(new FirstFieldLocation(ty.byteWidth), ty)));
 	}
 
-	xmmType_ = new CompoundType(lang, "union", "xmmreg_t", 16);
-	addXmmS("ss", lang.floatType("float", 4));
-	addXmmS("sd", lang.floatType("double", 8));
-	addXmmP("ps", lang.floatType("float", 4));
-	addXmmP("pd", lang.floatType("double", 8));
-	addXmmP("pb", lang.integerType("uint8_t", false, 1));
-	addXmmP("pw", lang.integerType("uint16_t", false, 2));
-	addXmmP("pi", lang.integerType("uint32_t", false, 4));
-	addXmmP("psb", lang.integerType("int8_t", true, 1));
-	addXmmP("psw", lang.integerType("int16_t", true, 2));
-	addXmmP("psi", lang.integerType("int32_t", true, 4));
+	xmmType_ = new CompoundType(lang, "union", "xmmreg_t", TS16);
+	addXmmS("ss", lang.floatType("float", TS4));
+	addXmmS("sd", lang.floatType("double", TS8));
+	addXmmP("ps", lang.floatType("float", TS4));
+	addXmmP("pd", lang.floatType("double", TS8));
+	addXmmP("pb", lang.integerType("uint8_t", false, TS1));
+	addXmmP("pw", lang.integerType("uint16_t", false, TS2));
+	addXmmP("pi", lang.integerType("uint32_t", false, TS4));
+	addXmmP("psb", lang.integerType("int8_t", true, TS1));
+	addXmmP("psw", lang.integerType("int16_t", true, TS2));
+	addXmmP("psi", lang.integerType("int32_t", true, TS4));
 
 	void addMmP(string name, Type ty)
 	{
 	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(0, 8 / ty.byteWidth);
+	    aTy.addDim(TS0,
+                       cast(TargetSize) (8 / ty.byteWidth));
 	    (cast(CompoundType) mmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(8), aTy)));
+		new Value(new FirstFieldLocation(TS8), aTy)));
 	}
 
-	mmType_ = new CompoundType(lang, "union", "mmreg_t", 16);
-	addMmP("pb", lang.integerType("uint8_t", false, 1));
-	addMmP("pw", lang.integerType("uint16_t", false, 2));
-	addMmP("pi", lang.integerType("uint32_t", false, 4));
-	addMmP("psb", lang.integerType("int8_t", true, 1));
-	addMmP("psw", lang.integerType("int16_t", true, 2));
-	addMmP("psi", lang.integerType("int32_t", true, 4));
+	mmType_ = new CompoundType(lang, "union", "mmreg_t", TS16);
+	addMmP("pb", lang.integerType("uint8_t", false, TS1));
+	addMmP("pw", lang.integerType("uint16_t", false, TS2));
+	addMmP("pi", lang.integerType("uint32_t", false, TS4));
+	addMmP("psb", lang.integerType("int8_t", true, TS1));
+	addMmP("psw", lang.integerType("int16_t", true, TS2));
+	addMmP("psi", lang.integerType("int32_t", true, TS4));
     }
 
     override {
@@ -1045,29 +1054,31 @@ class X86_64State: MachineState
 		   regs_.r_es, regs_.r_fs, regs_.r_gs);
 	}
 
-	ulong pc()
+	TargetAddress pc()
 	{
-	    return regs_.r_rip;
+	    return cast(TargetAddress) regs_.r_rip;
 	}
 
-	void pc(ulong pc)
+	void pc(TargetAddress pc)
 	{
 	    regs_.r_rip = pc;
 	    grdirty_ = true;
 	}
 
-	ulong tp()
+	TargetAddress tp()
 	{
-	    return tp_;
+	    return cast(TargetAddress) tp_;
 	}
 
-	ulong tls_get_addr(uint index, ulong offset)
+	TargetAddress tls_get_addr(uint index, ulong offset)
 	{
 	    if (!tp_)
-		return 0;
-	    ulong dtv = readInteger(readMemory(tp_ + 8, 8));
-	    ulong base = readInteger( readMemory(dtv + 8 + 8*index, 8));
-	    return base + offset;
+		return cast(TargetAddress) 0;
+	    ulong dtv = readInteger(readMemory(cast(TargetAddress) (tp_ + 8),
+                                               TS8));
+	    ulong base = readInteger( readMemory(cast(TargetAddress) (dtv + 8 + 8*index),
+                                                 TS8));
+	    return cast(TargetAddress) (base + offset);
 	}
 
 	PtraceCommand[] ptraceReadCommands()
@@ -1131,9 +1142,9 @@ class X86_64State: MachineState
 	    return *grAddr(gregno);
 	}
 
-	size_t grWidth(int greg)
+	TargetSize grWidth(int greg)
 	{
-	    return 8;
+	    return TS8;
 	}
 
 	uint spregno()
@@ -1141,7 +1152,7 @@ class X86_64State: MachineState
 	    return 7;
 	}
 
-	size_t grCount()
+	uint grCount()
 	{
 	    return RIP + 1;
 	}
@@ -1257,7 +1268,7 @@ class X86_64State: MachineState
 	    *cast(xmmreg64*) regs = fpregs_;
 	}
 
-	ubyte[] readRegister(uint regno, size_t bytes)
+	ubyte[] readRegister(uint regno, TargetSize bytes)
 	{
 	    ubyte[] v;
 	    if (regno <= RIP) {
@@ -1341,9 +1352,9 @@ class X86_64State: MachineState
 	    grdirty_ = true;
 	}
 
-	uint pointerWidth()
+	TargetSize pointerWidth()
 	{
-	    return 8;
+	    return TS8;
 	}
 
 	ulong readInteger(ubyte[] bytes)
@@ -1431,17 +1442,17 @@ class X86_64State: MachineState
 	    }
 	}
 
-	ubyte[] readMemory(ulong address, size_t bytes)
+	ubyte[] readMemory(TargetAddress address, TargetSize bytes)
 	{
 	    return target_.readMemory(address, bytes);
 	}
 
-	void writeMemory(ulong address, ubyte[] toWrite)
+	void writeMemory(TargetAddress address, ubyte[] toWrite)
 	{
 	    target_.writeMemory(address, toWrite);
 	}
 
-	Value call(ulong address, Type returnType, Value[] args)
+	Value call(TargetAddress address, Type returnType, Value[] args)
 	{
 	    X86_64State saveState = new X86_64State(target_);
 	    saveState.regs_ = regs_;
@@ -1520,7 +1531,8 @@ class X86_64State: MachineState
 		    if (ssereg == 0)
 			memargs ~= argval[i];
 		    else {
-			auto v = readRegister(sseregs[ssereg - 1], 8);
+			auto v = readRegister(sseregs[ssereg - 1],
+                                              TS8);
 			v ~= argval[i];
 			writeRegister(sseregs[ssereg - 1], v);
 		    }
@@ -1545,7 +1557,7 @@ class X86_64State: MachineState
 	     * stack 16-byte aligned here.
 	     */
 	    if (memargs.length > 0)
-		writeMemory(newFrame + 16, memargs);
+		writeMemory(cast(TargetAddress) (newFrame + 16), memargs);
 
 	    static class callBreakpoint: TargetBreakpointListener
 	    {
@@ -1564,7 +1576,7 @@ class X86_64State: MachineState
 	     */
 	    ubyte[8] ret;
 	    writeInteger(target_.entry, ret);
-	    writeMemory(newFrame + 8, ret);
+	    writeMemory(cast(TargetAddress) (newFrame + 8), ret);
 	    auto bpl = new callBreakpoint;
 	    target_.setBreakpoint(target_.entry, bpl);
 
@@ -1614,32 +1626,33 @@ class X86_64State: MachineState
 	    foreach (i, cl; retcls) {
 		if (cl == INTEGER) {
 		    if (intreg == 0)
-			retval ~= readRegister(RAX, 8);
+			retval ~= readRegister(RAX, TS8);
 		    else
-			retval ~= readRegister(RDX, 8);
+			retval ~= readRegister(RDX, TS8);
 		    intreg++;
 		}
 		else if (cl == SSE) {
 		    if (ssereg == 0)
-			retval ~= readRegister(XMM0, 8);
+			retval ~= readRegister(XMM0, TS8);
 		    else
-			retval ~= readRegister(XMM1, 8);
+			retval ~= readRegister(XMM1, TS8);
 		    ssereg++;
 		}
 		else if (cl == SSEUP) {
 		    if (ssereg == 1)
-			retval ~= readRegister(XMM0, 16)[8..$];
+			retval ~= readRegister(XMM0, TS16)[8..$];
 		    else
-			retval ~= readRegister(XMM1, 16)[8..$];
+			retval ~= readRegister(XMM1, TS16)[8..$];
 		}
 		else if (cl == X87) {
 		    if (i < retcls.length - 1
 			&& retcls[i + 1] == X87UP)
-			retval ~= readRegister(ST0, 16);
+			retval ~= readRegister(ST0, TS16);
 		    else
 			retval ~= readRegister(ST0, returnType.byteWidth);
 		} else if (cl == MEMORY) {
-		    retval = readMemory(regs_.r_rax, returnType.byteWidth);
+		    retval = readMemory(cast(TargetAddress) regs_.r_rax,
+                                        returnType.byteWidth);
 		    break;
 		}
 		else {
@@ -1653,48 +1666,48 @@ class X86_64State: MachineState
 	    return new Value(new ConstantLocation(retval), returnType);
 	}
 
-	ulong findFlowControl(ulong start, ulong end)
+	TargetAddress findFlowControl(TargetAddress start, TargetAddress end)
 	{
-	    char readByte(ulong loc) {
-		ubyte[] t = readMemory(loc, 1);
+	    char readByte(TargetAddress loc) {
+		ubyte[] t = readMemory(loc, TS1);
 		return cast(char) t[0];
 	    }
 
 	    Disassembler dis = new Disassembler;
 	    dis.setOption("x86_64");
-	    ulong loc = start;
+	    TargetAddress loc = start;
 	    while (loc < end) {
-		ulong tloc = loc;
+		TargetAddress tloc = loc;
 		if (dis.isFlowControl(loc, &readByte))
 		    return tloc;
 	    }
 	    return end;
 	}
 
-	ulong findJump(ulong start, ulong end)
+	TargetAddress findJump(TargetAddress start, TargetAddress end)
 	{
-	    char readByte(ulong loc) {
-		ubyte[] t = readMemory(loc, 1);
+	    char readByte(TargetAddress loc) {
+		ubyte[] t = readMemory(loc, TS1);
 		return cast(char) t[0];
 	    }
 
 	    Disassembler dis = new Disassembler;
 	    dis.setOption("x86_64");
-	    ulong loc = start;
+	    TargetAddress loc = start;
 	    while (loc < end) {
-		ulong tloc = loc;
-		ulong target;
+		TargetAddress tloc = loc;
+		TargetAddress target;
 		if (dis.isJump(loc, target, &readByte))
 		    return target;
 	    }
 	    return end;
 	}
 
-	string disassemble(ref ulong address,
-			   string delegate(ulong) lookupAddress)
+	string disassemble(ref TargetAddress address,
+			   string delegate(TargetAddress) lookupAddress)
 	{
-	    char readByte(ulong loc) {
-		ubyte[] t = readMemory(loc, 1);
+	    char readByte(TargetAddress loc) {
+		ubyte[] t = readMemory(loc, TS1);
 		return cast(char) t[0];
 	    }
 
@@ -1831,7 +1844,8 @@ private:
 		    
 	    for (auto i = 0; i < cTy.length; i++) {
 		auto f = cTy[i].value;
-		Location loc = new MemoryLocation(0, 0);
+		Location loc = new MemoryLocation(cast(TargetAddress) 0,
+                                                  TS0);
 		loc = f.loc.fieldLocation(loc, this);
 		auto start = loc.address(this) / 8;
 		auto end = (loc.address(this)

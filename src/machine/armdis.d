@@ -51,6 +51,7 @@ module machine.armdis;
 
 version(LDC) import std.compat;
 import std.string;
+import target.target;
 
 /*
  * General instruction format
@@ -281,11 +282,16 @@ string insn_fpaimm(uint x)
     return insn_fpaconstants[x & 0x07];
 }
 
+private TargetAddress branchTarget(TargetAddress addr, int offset)
+{
+    return cast(TargetAddress) (addr + 8 + offset);
+}
+
 string
-disasm(ref ulong loc, uint delegate(ulong) readWord, string delegate(ulong) lookupAddress)
+disasm(ref TargetAddress loc, uint delegate(TargetAddress) readWord, string delegate(TargetAddress) lookupAddress)
 {
 	arm32_insn *i_ptr = &arm32_i[0];
-	const uint INSN_SIZE = 4;
+	const TargetAddress INSN_SIZE = cast(TargetAddress) 4;
 
 	uint insn;
 	int matchp;
@@ -398,7 +404,7 @@ disasm(ref ulong loc, uint delegate(ulong) readWord, string delegate(ulong) look
 			branch = ((insn << 2) & 0x03ffffff);
 			if (branch & 0x02000000)
 				branch |= 0xfc000000;
-			res ~= lookupAddress(loc + 8 + branch);
+			res ~= lookupAddress(branchTarget(loc, branch));
 			break;
 		/* t - blx address */
 		case 't':
@@ -406,7 +412,7 @@ disasm(ref ulong loc, uint delegate(ulong) readWord, string delegate(ulong) look
 			    (insn >> 23 & 0x00000002);
 			if (branch & 0x02000000)
 				branch |= 0xfc000000;
-			res ~= lookupAddress(loc + 8 + branch);
+			res ~= lookupAddress(branchTarget(loc, branch));
 			break;
 		/* X - block transfer type */
 		case 'X':
@@ -585,7 +591,7 @@ disasm_print_reglist(uint insn)
 }
 
 static string
-disasm_insn_ldrstr(uint insn, uint loc, string delegate(ulong) lookupAddress)
+disasm_insn_ldrstr(uint insn, TargetAddress loc, string delegate(TargetAddress) lookupAddress)
 {
 	int offset;
 	string res;
@@ -597,7 +603,7 @@ disasm_insn_ldrstr(uint insn, uint loc, string delegate(ulong) lookupAddress)
 			loc += offset;
 		else
 			loc -= offset;
-		res = lookupAddress(loc + 8);
+		res = lookupAddress(branchTarget(loc, 0));
  	} else {
 		res = format("[r%d", (insn >> 16) & 0x0f);
 		if ((insn & 0x03000fff) != 0x01000000) {
@@ -616,7 +622,7 @@ disasm_insn_ldrstr(uint insn, uint loc, string delegate(ulong) lookupAddress)
 }
 
 static string
-disasm_insn_ldrhstrh(uint insn, uint loc, string delegate(ulong) lookupAddress)
+disasm_insn_ldrhstrh(uint insn, TargetAddress loc, string delegate(TargetAddress) lookupAddress)
 {
 	int offset;
 	string res;
@@ -628,7 +634,7 @@ disasm_insn_ldrhstrh(uint insn, uint loc, string delegate(ulong) lookupAddress)
 			loc += offset;
 		else
 			loc -= offset;
-		res = lookupAddress(loc + 8);
+		res = lookupAddress(branchTarget(loc, 0));
  	} else {
 		res = format("[r%d", (insn >> 16) & 0x0f);
 		if ((insn & 0x01400f0f) != 0x01400000) {

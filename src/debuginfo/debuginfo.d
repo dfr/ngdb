@@ -34,7 +34,7 @@ import debuginfo.expr: EvalException;
 import debuginfo.language;
 import debuginfo.types;
 import machine.machine;
-import target.target: TargetException;
+import target.target;
 
 /**
  * This structure is used to represent line number information
@@ -42,7 +42,7 @@ import target.target: TargetException;
  */
 struct LineEntry
 {
-    ulong address;
+    TargetAddress address;
     string name;		// leaf name
     string fullname;		// name including directory
     uint line;
@@ -132,12 +132,12 @@ interface Location
     /**
      * Size in bytes of the object
      */
-    size_t length();
+    TargetSize length();
 
     /**
      * Resize an object
      */
-    void length(size_t len);
+    void length(TargetSize len);
 
     /**
      * Read the object value
@@ -157,7 +157,7 @@ interface Location
     /**
      * Return the memory address of the object
      */
-    ulong address(MachineState);
+    TargetAddress address(MachineState);
 
     /**
      * Return true if the object is an l-value (i.e. implements writeValue).
@@ -175,7 +175,7 @@ interface Location
      * Return a location object which represents a subrange of this
      * location.
      */
-    Location subrange(size_t start, size_t length, MachineState state);
+    Location subrange(TargetSize start, TargetSize length, MachineState state);
 
     /**
      * Return a copy of this location.
@@ -185,7 +185,7 @@ interface Location
 
 class RegisterLocation: Location
 {
-    this(uint regno, size_t length)
+    this(uint regno, TargetSize length)
     {
 	regno_ = regno;
 	length_ = length;
@@ -197,12 +197,12 @@ class RegisterLocation: Location
 	    return true;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
 	    return length_;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    length_ = length;
 	}
@@ -222,10 +222,10 @@ class RegisterLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    assert(false);
-	    return 0;
+	    return TA0;
 	}
 
 	bool isLval(MachineState)
@@ -238,7 +238,7 @@ class RegisterLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    return new SubrangeLocation(this, start, length);
 	}
@@ -250,12 +250,12 @@ class RegisterLocation: Location
     }
 
     uint regno_;
-    size_t length_;
+    TargetSize length_;
 }
 
 class MemoryLocation: Location
 {
-    this(ulong address, size_t length)
+    this(TargetAddress address, TargetSize length)
     {
 	address_ = address;
 	length_ = length;
@@ -267,12 +267,12 @@ class MemoryLocation: Location
 	    return true;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
 	    return length_;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    length_ = length;
 	}
@@ -293,7 +293,7 @@ class MemoryLocation: Location
 	    return true;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    return address_;
 	}
@@ -308,10 +308,11 @@ class MemoryLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    assert(length_ == 0 || start + length <= length_);
-	    return new MemoryLocation(address_ + start, length);
+	    return new MemoryLocation(cast(TargetAddress)(address_ + start),
+                                      length);
 	}
 
 	Location dup()
@@ -320,13 +321,13 @@ class MemoryLocation: Location
 	}
     }
 
-    ulong address_;
-    size_t length_;
+    TargetAddress address_;
+    TargetSize length_;
 }
 
 class TLSLocation: Location
 {
-    this(uint index, ulong offset, size_t length)
+    this(uint index, TargetSize offset, TargetSize length)
     {
 	index_ = index;
 	offset = offset;
@@ -339,12 +340,12 @@ class TLSLocation: Location
 	    return state.tls_get_addr(index_, 0) != 0;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
 	    return length_;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    length_ = length;
 	}
@@ -372,7 +373,7 @@ class TLSLocation: Location
 	    return true;
 	}
 
-	ulong address(MachineState state)
+	TargetAddress address(MachineState state)
 	{
 	    return state.tls_get_addr(index_, offset_);
 	}
@@ -387,7 +388,7 @@ class TLSLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    assert(start + length < length_);
 	    return new TLSLocation(index_, offset_ + start, length);
@@ -400,13 +401,13 @@ class TLSLocation: Location
     }
 
     uint index_;
-    ulong offset_;
-    size_t length_;
+    TargetSize offset_;
+    TargetSize length_;
 }
 
 class CompositeLocation: Location
 {
-    void addPiece(Location loc, size_t len)
+    void addPiece(Location loc, TargetSize len)
     {
 	pieces_ ~= piece(loc, len);
     }
@@ -420,15 +421,15 @@ class CompositeLocation: Location
 	    return true;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
-	    size_t len = 0;
+	    TargetSize len;
 	    foreach (p; pieces_)
 		len += p.len;
 	    return len;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    assert(false);
 	}
@@ -443,7 +444,7 @@ class CompositeLocation: Location
 
 	void writeValue(MachineState state, ubyte[] value)
 	{
-	    size_t off = 0;
+	    TargetSize off;
 	    foreach (p; pieces_) {
 		p.loc.writeValue(state, value[off..off+p.len]);
 		off += p.len;
@@ -455,10 +456,10 @@ class CompositeLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    assert(false);
-	    return 0;
+	    return TA0;
 	}
 
 	bool isLval(MachineState)
@@ -471,7 +472,7 @@ class CompositeLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    return new SubrangeLocation(this, start, length);
 	}
@@ -488,7 +489,7 @@ private:
     struct piece
     {
 	Location loc;
-	size_t len;
+	TargetSize len;
     }
     piece[] pieces_;
 }
@@ -501,12 +502,12 @@ class NoLocation: Location
 	    return false;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
-	    return 0;
+	    return TS0;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    assert(false);
 	}
@@ -526,10 +527,10 @@ class NoLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    assert(false);
-	    return 0;
+	    return TA0;
 	}
 
 	bool isLval(MachineState)
@@ -542,7 +543,7 @@ class NoLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    return null;
 	}
@@ -560,7 +561,7 @@ class NoLocation: Location
  */
 class FirstFieldLocation: Location
 {
-    this(size_t length)
+    this(TargetSize length)
     {
 	length_ = length;
     }
@@ -571,12 +572,12 @@ class FirstFieldLocation: Location
 	    return false;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
 	    return length_;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    assert(false);
 	}
@@ -597,10 +598,10 @@ class FirstFieldLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    assert(false);
-	    return 0;
+	    return TA0;
 	}
 
 	bool isLval(MachineState)
@@ -619,7 +620,7 @@ class FirstFieldLocation: Location
 	    }
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    return null;
 	}
@@ -630,7 +631,7 @@ class FirstFieldLocation: Location
 	}
     }
 
-    size_t length_;
+    TargetSize length_;
 }
 
 class ConstantLocation: Location
@@ -647,12 +648,12 @@ class ConstantLocation: Location
 	    return true;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
-	    return value_.length;
+	    return cast(TargetSize) value_.length;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    assert(false);
 	}
@@ -673,10 +674,10 @@ class ConstantLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    assert(false);
-	    return 0;
+	    return TA0;
 	}
 
 	bool isLval(MachineState)
@@ -689,7 +690,7 @@ class ConstantLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    return new SubrangeLocation(this, start, length);
 	}
@@ -705,7 +706,7 @@ class ConstantLocation: Location
 
 class SubrangeLocation: Location
 {
-    this(Location base, size_t start, size_t length)
+    this(Location base, TargetSize start, TargetSize length)
     {
 	base_ = base;
 	start_ = start;
@@ -718,12 +719,12 @@ class SubrangeLocation: Location
 	    return base_.valid(state);
 	}
 
-	size_t length()
+	TargetSize length()
 	{
 	    return length;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    assert(false);
 	}
@@ -746,10 +747,10 @@ class SubrangeLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    assert(false);
-	    return 0;
+	    return TA0;
 	}
 
 	bool isLval(MachineState)
@@ -762,7 +763,7 @@ class SubrangeLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    return new SubrangeLocation(base_, start_ + start, length);
 	}
@@ -775,8 +776,8 @@ class SubrangeLocation: Location
     }
 
     Location base_;
-    size_t start_;
-    size_t length_;
+    TargetSize start_;
+    TargetSize length_;
 }
 
 class UserLocation: Location
@@ -791,12 +792,12 @@ class UserLocation: Location
 	    return true;
 	}
 
-	size_t length()
+	TargetSize length()
 	{
-	    return value_.length;
+	    return cast(TargetSize) value_.length;
 	}
 
-	void length(size_t length)
+	void length(TargetSize length)
 	{
 	    value_.length = length;
 	}
@@ -817,10 +818,10 @@ class UserLocation: Location
 	    return false;
 	}
 
-	ulong address(MachineState)
+	TargetAddress address(MachineState)
 	{
 	    assert(false);
-	    return 0;
+	    return TA0;
 	}
 
 	bool isLval(MachineState)
@@ -833,7 +834,7 @@ class UserLocation: Location
 	    return null;
 	}
 
-	Location subrange(size_t start, size_t length, MachineState state)
+	Location subrange(TargetSize start, TargetSize length, MachineState state)
 	{
 	    return new SubrangeLocation(this, start, length);
 	}
@@ -947,13 +948,13 @@ private:
 
 struct AddressRange
 {
-    bool contains(ulong pc)
+    bool contains(TargetAddress pc)
     {
 	return pc >= start && pc < end;
     }
 
-    ulong start;
-    ulong end;
+    TargetAddress start;
+    TargetAddress end;
 }
 
 class LexicalScope: DebugItem, Scope
@@ -1030,7 +1031,7 @@ class LexicalScope: DebugItem, Scope
 	return variables_;
     }
 
-    bool contains(ulong pc)
+    bool contains(TargetAddress pc)
     {
 	foreach (a; addresses_)
 	    if (a.contains(pc))
@@ -1046,13 +1047,13 @@ class LexicalScope: DebugItem, Scope
 
 class Function: DebugItem, Scope
 {
-    this(string name, Language lang, size_t byteWidth)
+    this(string name, Language lang, TargetSize byteWidth)
     {
 	name_ = name;
 	returnType_ = lang.voidType;
 	containingType_ = null;
 	lang_ = lang;
-	address_ = 0;
+	address_ = TA0;
 	byteWidth_ = byteWidth;
     }
 
@@ -1096,7 +1097,7 @@ class Function: DebugItem, Scope
 	    foreach (a; arguments_)
 		ft.addArgumentType(a.value.type);
 	    ft.varargs(varargs_);
-	    return new Value(new MemoryLocation(address_, 0), ft);
+	    return new Value(new MemoryLocation(address_, TS0), ft);
 	}
 	string[] contents(MachineState state)
 	{
@@ -1225,12 +1226,12 @@ class Function: DebugItem, Scope
 	return variables_;
     }
 
-    ulong address()
+    TargetAddress address()
     {
 	return address_;
     }
 
-    void address(ulong address)
+    void address(TargetAddress address)
     {
 	address_ = address;
     }
@@ -1256,8 +1257,8 @@ private:
     Variable[] variables_;
     LexicalScope[] scopes_;
     Scope compilationUnit_;
-    ulong address_;
-    size_t byteWidth_;
+    TargetAddress address_;
+    TargetSize byteWidth_;
 }
 
 /**
@@ -1270,14 +1271,14 @@ interface DebugInfo: Scope
      * Return a Language object that matches the compilation unit
      * containing the given address.
      */
-    Language findLanguage(ulong address);
+    Language findLanguage(TargetAddress address);
 
     /**
      * Search for a source line by address. If found, two line entries
      * are returned, one before the address and the second after
      * it. Return true if any line enty matched.
      */
-    bool findLineByAddress(ulong address, out LineEntry[] res);
+    bool findLineByAddress(TargetAddress address, out LineEntry[] res);
 
     /**
      * Search for an address by source line. All entries which match
@@ -1309,7 +1310,7 @@ interface DebugInfo: Scope
      * Return an object describing the function matching the given
      * address.
      */
-    Function findFunction(ulong pc);
+    Function findFunction(TargetAddress pc);
 
     /**
      * Unwind the stack frame associated with a given machine state

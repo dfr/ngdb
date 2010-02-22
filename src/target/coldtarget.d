@@ -48,9 +48,9 @@ static import std.file;
 
 class ColdModule: TargetModule
 {
-    this(string filename, ulong addr)
+    this(string filename, TargetAddress addr)
     {
-	void setLimits(uint tag, ulong s, ulong e)
+	void setLimits(uint tag, TargetAddress s, TargetAddress e)
 	{
 	    if (tag != PT_LOAD)
 		return;
@@ -61,8 +61,8 @@ class ColdModule: TargetModule
 	}
 
 	filename_ = filename;
-	start_ = ~0L;
-	end_ = 0;
+	start_ = cast(TargetAddress) TargetAddress.max;
+	end_ = cast(TargetAddress) 0;
 	obj_ = cast(Elffile) Objfile.open(filename_, addr);
 	if (obj_)
 	    obj_.enumerateProgramHeaders(&setLimits);
@@ -76,17 +76,17 @@ class ColdModule: TargetModule
 	    return filename_;
 	}
 
-	ulong start()
+	TargetAddress start()
 	{
 	    return start_;
 	}
 
-	ulong end()
+	TargetAddress end()
 	{
 	    return end_;
 	}
 
-	bool contains(ulong addr)
+	bool contains(TargetAddress addr)
 	{
 	    return addr >= start && addr < end_;
 	}
@@ -109,7 +109,7 @@ class ColdModule: TargetModule
 	    }
 	    return false;
 	}	
-	bool lookupSymbol(ulong addr, out TargetSymbol ts)
+	bool lookupSymbol(TargetAddress addr, out TargetSymbol ts)
 	{
 	    if (obj_) {
 		Symbol* s = obj_.lookupSymbol(addr);
@@ -120,7 +120,7 @@ class ColdModule: TargetModule
 	    }
 	    return false;
 	}
-	bool inPLT(ulong addr)
+	bool inPLT(TargetAddress addr)
 	{
 	    return false;
 	}
@@ -178,7 +178,7 @@ class ColdModule: TargetModule
     }
 
     void enumerateLinkMap(Target target,
-			  void delegate(string, ulong, ulong) dg)
+			  void delegate(string, TargetAddress, TargetAddress) dg)
     {
 	if (obj_)
 	    return obj_.enumerateLinkMap(target, dg);
@@ -192,7 +192,7 @@ class ColdModule: TargetModule
 	    && end_ == mod.end_;
     }
 
-    ubyte[] readMemory(ulong targetAddress, size_t bytes)
+    ubyte[] readMemory(TargetAddress targetAddress, TargetSize bytes)
     {
 	if (obj_)
 	    return obj_.readProgram(targetAddress, bytes);
@@ -201,8 +201,8 @@ class ColdModule: TargetModule
 
 private:
     string filename_;
-    ulong start_;
-    ulong end_;
+    TargetAddress start_;
+    TargetAddress end_;
     Elffile obj_;
     DwarfFile dwarf_;
 }
@@ -280,11 +280,12 @@ class ColdTarget: Target
 	execname_ = execname;
 	corename_ = corename;
 	if (corename_)
-	    core_ = cast(Elffile) Objfile.open(corename_, 0);
+            core_ = cast(Elffile) Objfile.open(corename_,
+                                               cast(TargetAddress) 0);
 
 	listener.onTargetStarted(this);
 
-	modules_ ~= new ColdModule(execname_, 0);
+	modules_ ~= new ColdModule(execname_, cast(TargetAddress) 0);
 	listener_.onModuleAdd(this, modules_[0]);
 
 	if (core_) {
@@ -302,7 +303,7 @@ class ColdTarget: Target
 					   signame(pr.pr_cursig));
 	    }
 
-	    void findCoreModules(string name, ulong lm, ulong addr)
+	    void findCoreModules(string name, TargetAddress lm, TargetAddress addr)
 	    {
 		foreach (mod; modules_)
 		    if (mod.filename == name)
@@ -322,11 +323,12 @@ class ColdTarget: Target
 	    }
 	} else {
 	    size_t i = 0;
-	    ulong addr = 0x28070000;
+	    TargetAddress addr = cast(TargetAddress) 0x28070000;
 	    string interp = modules_[0].interpreter;
 	    if (interp) {
 		auto mod = new ColdModule(interp, addr);
-		addr = (mod.end + 0xfff) & ~0xfff; // XXX pagesize
+		addr = cast(TargetAddress)
+                    ((mod.end + 0xfff) & ~0xfff); // XXX pagesize
 		modules_ ~= mod;
 		listener_.onModuleAdd(this, mod);
 	    }
@@ -338,7 +340,8 @@ class ColdTarget: Target
 			if (mod.filename == name)
 			    return;
 		    auto mod = new ColdModule(name, addr);
-		    addr = (mod.end + 0xfff) & ~0xfff; // XXX pagesize
+		    addr = cast(TargetAddress)
+                        ((mod.end + 0xfff) & ~0xfff); // XXX pagesize
 		    modules_ ~= mod;
 		    listener_.onModuleAdd(this, mod);
 		}
@@ -366,19 +369,19 @@ class ColdTarget: Target
 	    return state_;
 	}
 
-	ulong entry()
+	TargetAddress entry()
 	{
 	    if (modules_.length > 0)
 		return modules_[0].obj_.entry;
 	    else
-		return 0;
+		return cast(TargetAddress) 0;
 	}
 
-	ubyte[] readMemory(ulong targetAddress, size_t bytes)
+	ubyte[] readMemory(TargetAddress targetAddress, TargetSize bytes)
 	{
 	    if (core_) {
 		bool readcore = false;
-		void checkAddress(uint tag, ulong s, ulong e)
+		void checkAddress(uint tag, TargetAddress s, TargetAddress e)
 		{
 		    if (tag != PT_LOAD)
 			return;
@@ -397,7 +400,7 @@ class ColdTarget: Target
 	    throw new TargetException("Can't read memory");
 	}
 
-	void writeMemory(ulong targetAddress, ubyte[] toWrite)
+	void writeMemory(TargetAddress targetAddress, ubyte[] toWrite)
 	{
 	    throw new TargetException("Can't write memory");
 	}
@@ -414,7 +417,7 @@ class ColdTarget: Target
 	{
 	}
 
-	void setBreakpoint(ulong, TargetBreakpointListener)
+	void setBreakpoint(TargetAddress, TargetBreakpointListener)
 	{
 	}
 

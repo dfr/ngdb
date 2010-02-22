@@ -87,18 +87,18 @@ class PtraceException: Exception
 
 class PtraceModule: TargetModule
 {
-    this(string filename, ulong start, ulong end)
+    this(string filename, TargetAddress start, TargetAddress end)
     {
 	filename_ = filename;
 	start_ = start;
 	end_ = end;
     }
 
-    ulong entry()
+    TargetAddress entry()
     {
 	if (obj_)
 	    return obj_.entry;
-	return 0;
+	return cast(TargetAddress) 0;
     }
 
     void init()
@@ -127,23 +127,25 @@ class PtraceModule: TargetModule
 
 	    TargetSymbol sym;
 	    if (lookupSymbol("_thread_off_linkmap", sym)) {
-		ubyte[] t = target.readMemory(sym.value, 4);
+		ubyte[] t = target.readMemory(sym.value, TS4);
 		target.linkmapOffset_ = elf.read(*cast(int*) &t[0]);
 	    }
 	    if (lookupSymbol("_thread_off_tlsindex", sym)) {
-		ubyte[] t = target.readMemory(sym.value, 4);
+		ubyte[] t = target.readMemory(sym.value, TS4);
 		target.tlsindexOffset_ = elf.read(*cast(int*) &t[0]);
 	    }
 
 	    if (target.linkmapOffset_ && target.tlsindexOffset_
 		&& target.modules_.length > 0
 		&& this !is target.modules_[0]) {
-		void findTlsindex(string name, ulong lm, ulong addr)
+		void findTlsindex(string name, TargetAddress lm, TargetAddress addr)
 		{
 		    if (addr == start_) {
-			ulong p = lm - target.linkmapOffset_
-			    + target.tlsindexOffset_;
-			ubyte[] t = target.readMemory(p, 4);
+			TargetAddress p = cast(TargetAddress)
+                            (lm - target.linkmapOffset_
+                             + target.tlsindexOffset_);
+			ubyte[] t = target.readMemory(p,
+                                                      TS4);
 			int tlsindex = elf.read(*cast(int*) &t[0]);
 			//writefln("Module %s TLS index is %d", filename_, tlsindex);
 			elf.tlsindex = tlsindex;
@@ -156,15 +158,15 @@ class PtraceModule: TargetModule
 	}
     }
 
-    ulong findSharedLibraryBreakpoint(Target target)
+    TargetAddress findSharedLibraryBreakpoint(Target target)
     {
 	if (obj_) {
 	    auto elf = cast(Elffile) obj_;
 	    if (!elf)
-		return 0;
+		return cast(TargetAddress) 0;
 	    return elf.findSharedLibraryBreakpoint(target);
 	}
-	return 0;
+	return cast(TargetAddress) 0;
     }
 
     uint sharedLibraryState(Target target)
@@ -179,7 +181,7 @@ class PtraceModule: TargetModule
     }
 
     void enumerateLinkMap(Target target,
-			  void delegate(string, ulong, ulong) dg)
+			  void delegate(string, TargetAddress, TargetAddress) dg)
     {
 	if (obj_) {
 	    auto elf = cast(Elffile) obj_;
@@ -196,17 +198,17 @@ class PtraceModule: TargetModule
 	    return filename_;
 	}
 
-	ulong start()
+	TargetAddress start()
 	{
 	    return start_;
 	}
 
-	ulong end()
+	TargetAddress end()
 	{
 	    return end_;
 	}
 
-	bool contains(ulong addr)
+	bool contains(TargetAddress addr)
 	{
 	    return addr >= start && addr < end_;
 	}
@@ -229,7 +231,7 @@ class PtraceModule: TargetModule
 	    }
 	    return false;
 	}	
-	bool lookupSymbol(ulong addr, out TargetSymbol ts)
+	bool lookupSymbol(TargetAddress addr, out TargetSymbol ts)
 	{
 	    if (obj_) {
 		Symbol* s = obj_.lookupSymbol(addr);
@@ -240,7 +242,7 @@ class PtraceModule: TargetModule
 	    }
 	    return false;
 	}
-	bool inPLT(ulong pc)
+	bool inPLT(TargetAddress pc)
 	{
 	    if (obj_) {
 		auto elf = cast(Elffile) obj_;
@@ -295,15 +297,15 @@ class PtraceModule: TargetModule
 
 private:
     string filename_;
-    ulong start_;
-    ulong end_;
+    TargetAddress start_;
+    TargetAddress end_;
     Objfile obj_;
     DwarfFile dwarf_;
 }
 
 class PtraceBreakpoint
 {
-    this(PtraceTarget target, ulong addr)
+    this(PtraceTarget target, TargetAddress addr)
     {
 	target_ = target;
 	addr_ = addr;
@@ -315,7 +317,9 @@ class PtraceBreakpoint
 	 * Write a breakpoint instruction, saving what was there
 	 * before.
 	 */
-	save_ = target_.readMemory(addr_, target_.break_.length, false);
+	save_ = target_.readMemory(addr_,
+                                   cast(TargetSize) target_.break_.length,
+                                   false);
 	target_.writeMemory(addr_, target_.break_, false);
     }
 
@@ -328,7 +332,7 @@ class PtraceBreakpoint
 	stoppedThreads_.length = 0;
     }
 
-    ulong address()
+    TargetAddress address()
     {
 	return addr_;
     }
@@ -363,7 +367,7 @@ class PtraceBreakpoint
 
 private:
     PtraceTarget target_;
-    ulong addr_;
+    TargetAddress addr_;
     TargetBreakpointListener[] listeners_;
     PtraceThread[] stoppedThreads_;
     ubyte[] save_;
@@ -559,19 +563,19 @@ class PtraceTarget: Target, TargetBreakpointListener
 	{
 	    return state_;
 	}
-	ulong entry()
+	TargetAddress entry()
 	{
 	    if (modules_.length > 0)
 		return modules_[0].entry;
 	    else
-		return 0;
+		return cast(TargetAddress) 0;
 	}
-	ubyte[] readMemory(ulong targetAddress, size_t bytes)
+	ubyte[] readMemory(TargetAddress targetAddress, TargetSize bytes)
 	{
 	    return readMemory(targetAddress, bytes, true);
 	}
 
-	void writeMemory(ulong targetAddress, ubyte[] toWrite)
+	void writeMemory(TargetAddress targetAddress, ubyte[] toWrite)
 	{
 	    return writeMemory(targetAddress, toWrite, true);
 	}
@@ -663,11 +667,11 @@ class PtraceTarget: Target, TargetBreakpointListener
 	    }
 	}
 
-	void setBreakpoint(ulong addr, TargetBreakpointListener tbl)
+	void setBreakpoint(TargetAddress addr, TargetBreakpointListener tbl)
 	{
 	    debug(breakpoints)
 		writefln("setting breakpoint at 0x%x for 0x%x", addr,
-			 cast(ulong) cast(void*) tbl);
+			 cast(TargetAddress) cast(void*) tbl);
 	    if (addr in breakpoints_) {
 		breakpoints_[addr].addListener(tbl);
 	    } else {
@@ -681,8 +685,8 @@ class PtraceTarget: Target, TargetBreakpointListener
 	{
 	    debug(breakpoints)
 		writefln("clearing breakpoints for 0x%x",
-			 cast(ulong) cast(void*) tbl);
-	    PtraceBreakpoint[ulong] newBreakpoints;
+			 cast(TargetAddress) cast(void*) tbl);
+	    PtraceBreakpoint[TargetAddress] newBreakpoints;
 	    foreach (addr, pbp; breakpoints_) {
 		if (pbp.matchListener(tbl)) {
 		    pbp.removeListener(tbl);
@@ -755,7 +759,7 @@ class PtraceTarget: Target, TargetBreakpointListener
 	}
     }
 
-    ubyte[] readMemory(ulong targetAddress, size_t bytes, bool data)
+    ubyte[] readMemory(TargetAddress targetAddress, TargetSize bytes, bool data)
     {
 	debug (ptrace)
 	    writefln("Reading %d bytes of %s @ %#x",
@@ -782,8 +786,8 @@ class PtraceTarget: Target, TargetBreakpointListener
 	    return result;
 	} else {
 	    ubyte[] result;
-	    ulong start = targetAddress & ~3;
-	    ulong end = (targetAddress + bytes + 3) & ~3;
+	    auto start = targetAddress & ~3;
+	    auto end = (targetAddress + bytes + 3) & ~3;
 
 	    try {
 		result.length = end - start;
@@ -806,7 +810,7 @@ class PtraceTarget: Target, TargetBreakpointListener
 	}
     }
 
-    void writeMemory(ulong targetAddress, ubyte[] toWrite, bool data)
+    void writeMemory(TargetAddress targetAddress, ubyte[] toWrite, bool data)
     {
 	version (use_PT_IO) {
 	    ptrace_io_desc io;
@@ -823,27 +827,29 @@ class PtraceTarget: Target, TargetBreakpointListener
 	    }
 	} else {
 	    auto bytes = toWrite.length;
-	    ulong start = targetAddress & ~3;
-	    ulong end = (targetAddress + bytes + 3) & ~3;
+	    auto start = targetAddress & ~3;
+	    auto end = (targetAddress + bytes + 3) & ~3;
 
 	    if (end - start == 4 && bytes < 4) {
 		/*
 		 * Special case for writing a subrange of a single
 		 * word.
 		 */
-		auto tmp = readMemory(start, 4, data);
+		auto tmp = readMemory(cast(TargetAddress) start,
+                                      TS4, data);
 		auto off = targetAddress - start;
 		tmp[off..off + bytes] = toWrite[];
 		toWrite = tmp;
 	    } else {
 		if (start < targetAddress) {
-		    toWrite = readMemory(start, targetAddress - start, data)
+		    toWrite = readMemory(cast(TargetAddress) start,
+                                         cast(TargetSize) (targetAddress - start), data)
 			~ toWrite;
 		}
 		if (end > targetAddress + bytes) {
 		    toWrite = toWrite
-			~ readMemory(targetAddress + bytes,
-				     end - targetAddress - bytes, data);
+			~ readMemory(cast(TargetAddress) (targetAddress + bytes),
+				     cast(TargetSize) (end - targetAddress - bytes), data);
 		}
 	    }
 
@@ -924,7 +930,7 @@ private:
 	PtraceModule[] modules;
 	PtraceModule lastMod;
 
-	void processModule(string name, ulong start, ulong end)
+	void processModule(string name, TargetAddress start, TargetAddress end)
 	{
 	    name = realpath(name);
 	    if (lastMod &&
@@ -939,8 +945,9 @@ private:
 	    }
 	}
 
-	ulong atoi(string s) {
-	    return std.c.stdlib.strtoull(toStringz(s), null, 0);
+	TargetAddress atoi(string s) {
+	    return cast(TargetAddress)
+                std.c.stdlib.strtoull(toStringz(s), null, 0);
 	}
 
 	string[] lines = splitlines(maps);
@@ -951,8 +958,8 @@ private:
 		    string name = words[12];
 		    if (name == "-")
 			name = execname_;
-		    ulong start = atoi(words[0]);
-		    ulong end = atoi(words[1]);
+		    TargetAddress start = atoi(words[0]);
+		    TargetAddress end = atoi(words[1]);
 		
 		    processModule(name, start, end);
 		}
@@ -964,8 +971,8 @@ private:
 		if (words.length == 6 && words[5][0] == '/') {
 		    string name = words[5];
 		    string[] t = split(words[0], "-");
-		    ulong start = atoi("0x" ~ t[0]);
-		    ulong end = atoi("0x" ~ t[1]);
+		    TargetAddress start = atoi("0x" ~ t[0]);
+		    TargetAddress end = atoi("0x" ~ t[1]);
 
 		    processModule(name, start, end);
 		}
@@ -1169,7 +1176,7 @@ private:
 				debug(breakpoints)
 				    writefln("hit breakpoint at 0x%x for 0x%x",
 					     pt.state.pc,
-					     cast(ulong) cast(void*) tbl);
+					     cast(TargetAddress) cast(void*) tbl);
 				if (tbl.onBreakpoint(this, pt))
 				    ret = true;
 			    }
@@ -1212,12 +1219,12 @@ private:
     uint nextTid_ = 1;
     PtraceThread[lwpid_t] threads_;
     PtraceModule[] modules_;
-    PtraceBreakpoint[ulong] breakpoints_;
+    PtraceBreakpoint[TargetAddress] breakpoints_;
     TargetListener listener_;
     string execname_;
     bool breakpointsActive_;
     string lastMaps_;
-    ulong sharedLibraryBreakpoint_;
+    TargetAddress sharedLibraryBreakpoint_;
     uint linkmapOffset_;
     uint tlsindexOffset_;
     ubyte[] break_;		// breakpoint instruction
