@@ -257,15 +257,15 @@ class X86State: MachineState
 	    *cast(reg32*) p = regs_;
 	}
 
-	void setGR(uint gregno, ulong val)
+	void setGR(uint gregno, MachineRegister val)
 	{
 	    *grAddr(gregno) = val;
 	    grdirty_ = true;
 	}
 
-	ulong getGR(uint gregno)
+	MachineRegister getGR(uint gregno)
 	{
-	    return *grAddr(gregno);
+	    return cast(MachineRegister) *grAddr(gregno);
 	}
 
 	TargetSize grWidth(int greg)
@@ -1131,15 +1131,15 @@ class X86_64State: MachineState
 	    *cast(reg64*) p = regs_;
 	}
 
-	void setGR(uint gregno, ulong val)
+	void setGR(uint gregno, MachineRegister val)
 	{
 	    *grAddr(gregno) = val;
 	    grdirty_ = true;
 	}
 
-	ulong getGR(uint gregno)
+	MachineRegister getGR(uint gregno)
 	{
-	    return *grAddr(gregno);
+	    return cast(MachineRegister) *grAddr(gregno);
 	}
 
 	TargetSize grWidth(int greg)
