@@ -79,7 +79,7 @@ class PtraceException: Exception
     this()
     {
 	errno_ = errno;
-	char[] s = std.string.toString(errno_).dup;
+	string s = std.string.toString(errno_).dup;
 	super(s);
     }
     int errno_;
@@ -87,7 +87,7 @@ class PtraceException: Exception
 
 class PtraceModule: TargetModule
 {
-    this(char[] filename, ulong start, ulong end)
+    this(string filename, ulong start, ulong end)
     {
 	filename_ = filename;
 	start_ = start;
@@ -191,7 +191,7 @@ class PtraceModule: TargetModule
     }
 
     override {
-	char[] filename()
+	string filename()
 	{
 	    return filename_;
 	}

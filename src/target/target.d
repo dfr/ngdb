@@ -134,7 +134,7 @@ interface TargetModule: Scope
      * Return the object filename of the module that occupies this address
      * range.
      */
-    char[] filename();
+    string filename();
 
     /**
      * Return the start address in the target address space for this
@@ -251,7 +251,7 @@ class TargetFactory
     /**
      * Return the name of the target factory (e.g. "process", "core" etc.).
      */
-    abstract char[]		name();
+    abstract string		name();
 
     /**
      * Create a new target instance with the given arguments.
