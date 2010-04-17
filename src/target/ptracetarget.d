@@ -85,36 +85,11 @@ class PtraceException: Exception
     int errno_;
 }
 
-class PtraceModule: TargetModule
+class PtraceModule: TargetModuleBase
 {
     this(string filename, TargetAddress start, TargetAddress end)
     {
-	filename_ = filename;
-	start_ = start;
-	end_ = end;
-    }
-
-    TargetAddress entry()
-    {
-	if (obj_)
-	    return obj_.entry;
-	return cast(TargetAddress) 0;
-    }
-
-    void init()
-    {
-	if (!obj_) {
-	    //writefln("Opening %s at %#x", filename_, start_);
-	    obj_ = Objfile.open(filename_, start_);
-	    if (obj_) {
-		if (DwarfFile.hasDebug(obj_)) {
-		    //writefln("Offset is %#x", obj_.offset);
-		    //writefln("Reading debug info for %s", filename_);
-		    dwarf_ = new DwarfFile(obj_);
-		}
-		auto elf = cast(Elffile) obj_;
-	    }
-	}
+	super(filename, start, end);
     }
 
     void digestDynamic(PtraceTarget target)
@@ -157,150 +132,6 @@ class PtraceModule: TargetModule
 	    }
 	}
     }
-
-    TargetAddress findSharedLibraryBreakpoint(Target target)
-    {
-	if (obj_) {
-	    auto elf = cast(Elffile) obj_;
-	    if (!elf)
-		return cast(TargetAddress) 0;
-	    return elf.findSharedLibraryBreakpoint(target);
-	}
-	return cast(TargetAddress) 0;
-    }
-
-    uint sharedLibraryState(Target target)
-    {
-	if (obj_) {
-	    auto elf = cast(Elffile) obj_;
-	    if (!elf)
-		return 0;
-	    return elf.sharedLibraryState(target);
-	}
-	return 0;
-    }
-
-    void enumerateLinkMap(Target target,
-			  void delegate(string, TargetAddress, TargetAddress) dg)
-    {
-	if (obj_) {
-	    auto elf = cast(Elffile) obj_;
-	    if (!elf)
-		return;
-	    return elf.enumerateLinkMap(target, dg);
-	}
-	return;
-    }
-
-    override {
-	string filename()
-	{
-	    return filename_;
-	}
-
-	TargetAddress start()
-	{
-	    return start_;
-	}
-
-	TargetAddress end()
-	{
-	    return end_;
-	}
-
-	bool contains(TargetAddress addr)
-	{
-	    return addr >= start && addr < end_;
-	}
-
-	DebugInfo debugInfo()
-	{
-	    return dwarf_;
-	}
-
-	bool lookupSymbol(string name, out TargetSymbol ts)
-	{
-	    if (obj_) {
-		Symbol* s = obj_.lookupSymbol(name);
-		if (s) {
-		    ts.name = s.name;
-		    ts.value = s.value;
-		    ts.size = s.size;
-		    return true;
-		}
-	    }
-	    return false;
-	}	
-	bool lookupSymbol(TargetAddress addr, out TargetSymbol ts)
-	{
-	    if (obj_) {
-		Symbol* s = obj_.lookupSymbol(addr);
-		if (s) {
-		    ts = TargetSymbol(s.name, s.value, s.size);
-		    return true;
-		}
-	    }
-	    return false;
-	}
-	bool inPLT(TargetAddress pc)
-	{
-	    if (obj_) {
-		auto elf = cast(Elffile) obj_;
-		if (!elf)
-		    return false;
-		return elf.inPLT(pc);
-	    }
-	    return false;
-	}
-	string[] contents(MachineState state)
-	{
-	    if (dwarf_)
-		return dwarf_.contents(state);
-	    return null;
-	}
-	bool lookup(string name, MachineState state, out DebugItem val)
-	{
-	    if (dwarf_)
-		return dwarf_.lookup(name, state, val);
-	    return false;
-	}
-	bool lookupStruct(string name, out Type ty)
-	{
-	    if (dwarf_)
-		return dwarf_.lookupStruct(name, ty);
-	    return false;
-	}
-	bool lookupUnion(string name, out Type ty)
-	{
-	    if (dwarf_)
-		return dwarf_.lookupUnion(name, ty);
-	    return false;
-	}
-	bool lookupTypedef(string name, out Type ty)
-	{
-	    if (dwarf_)
-		return dwarf_.lookupTypedef(name, ty);
-	    return false;
-	}
-    }
-
-    MachineState getState(Target target)
-    {
-	return obj_.getState(target);
-    }
-
-    int opEquals(PtraceModule mod)
-    {
-	return filename_ == mod.filename_
-	    && start_ == mod.start_;
-    }
-
-private:
-    string filename_;
-    TargetAddress start_;
-    TargetAddress end_;
-    Objfile obj_;
-    DwarfFile dwarf_;
 }
 
 class PtraceBreakpoint
