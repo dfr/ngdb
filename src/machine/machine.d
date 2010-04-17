@@ -49,125 +49,125 @@ typedef ulong MachineRegister;
  */
 class MachineState: Scope
 {
-    void dumpState();
+    abstract void dumpState();
 
     /**
      * Return the machine's program counter register.
      */
-    TargetAddress pc();
+    abstract TargetAddress pc();
 
     /**
      * Set the program counter register.
      */
-    void pc(TargetAddress);
+    abstract void pc(TargetAddress);
 
     /**
      * Return the thread pointer register.
      */
-    TargetAddress tp();
+    abstract TargetAddress tp();
 
     /**
      * Return the address of the TLS object at the given module index
      * and offset.
      */
-    TargetAddress tls_get_addr(uint index, ulong offset);
+    abstract TargetAddress tls_get_addr(uint index, ulong offset);
 
     /**
      * Return a set of ptrace commands to read the machine state from
      * a process or thread.
      */
-    PtraceCommand[] ptraceReadCommands();
+    abstract PtraceCommand[] ptraceReadCommands();
 
     /**
      * Return a set of ptrace commands to write the machine state back
      * to a process or thread.
      */
-    PtraceCommand[] ptraceWriteCommands();
+    abstract PtraceCommand[] ptraceWriteCommands();
 
     /**
      * Set the values of all the general registers.
      */
-    void setGRs(ubyte* regs);
+    abstract void setGRs(ubyte* regs);
 
     /**
      * Get the values of all the general registers.
      */
-    void getGRs(ubyte* regs);
+    abstract void getGRs(ubyte* regs);
 
     /**
      * Set a general register by register number.
      */
-    void setGR(uint gregno, MachineRegister val);
+    abstract void setGR(uint gregno, MachineRegister val);
 
     /**
      * Get a general register by register number.
      */
-    MachineRegister getGR(uint gregno);
+    abstract MachineRegister getGR(uint gregno);
 
     /**
      * Return the width in bytes of a general register
      */
-    TargetSize grWidth(int greg);
+    abstract TargetSize grWidth(int greg);
 
     /**
      * Return the stack pointer register index.
      */
-    uint spregno();
+    abstract uint spregno();
 
     /**
      * Return the number of general registers
      */
-    uint grCount();
+    abstract uint grCount();
 
     /**
      * Print a representation of the floating point state.
      */
-    void dumpFloat();
+    abstract void dumpFloat();
 
     /**
      * Set the values of all the floating point registers.
      */
-    void setFRs(ubyte* regs);
+    abstract void setFRs(ubyte* regs);
 
     /**
      * Get the values of all the floating point registers.
      */
-    void getFRs(ubyte* regs);
+    abstract void getFRs(ubyte* regs);
 
     /**
      * Read raw register bytes in target byte order. Register index
      * corresponds to dwarf register number.
      */
-    ubyte[] readRegister(uint regno, TargetSize bytes);
+    abstract ubyte[] readRegister(uint regno, TargetSize bytes);
 
     /**
      * Write raw register bytes in target byte order. Register index
      * corresponds to dwarf register number.
      */
-    void writeRegister(uint regno, ubyte[]);
+    abstract void writeRegister(uint regno, ubyte[]);
 
     /**
      * Return a byte array containing a breakpoint instruction for
      * this architecture.
      */
-    ubyte[] breakpoint();
+    abstract ubyte[] breakpoint();
 
     /**
      * Called after a thread hits a breakpoint to make any adjustments
      * to the machine state so that the PC is at the breakpoint
      * address.
      */
-    void adjustPcAfterBreak();
+    abstract void adjustPcAfterBreak();
 
     /**
      * Return the width of a pointer in bytes
      */
-    TargetSize pointerWidth();
+    abstract TargetSize pointerWidth();
 
     /**
      * Convert an integer in machine-native format to host format.
      */
-    ulong readInteger(ubyte[] bytes);
+    abstract ulong readInteger(ubyte[] bytes);
 
     /**
      * Convert an address in machine-native format to host format.
@@ -188,51 +188,52 @@ class MachineState: Scope
     /**
      * Convert an integer in host format to machine-native format.
      */
-    void writeInteger(ulong val, ubyte[] bytes);
+    abstract void writeInteger(ulong val, ubyte[] bytes);
 
     /**
      * Convert a floating point value in machine-native format to host format.
      */
-    real readFloat(ubyte[] bytes);
+    abstract real readFloat(ubyte[] bytes);
 
     /**
      * Convert a floating point value in host format to machine-native format.
      */
-    void writeFloat(real val, ubyte[] bytes);
+    abstract void writeFloat(real val, ubyte[] bytes);
 
     /**
      * Read from the machine's memory.
      */
-    ubyte[] readMemory(TargetAddress address, TargetSize bytes);
+    abstract ubyte[] readMemory(TargetAddress address, TargetSize bytes);
 
     /**
      * Write to the machine's memory.
      */
-    void writeMemory(TargetAddress address, ubyte[] toWrite);
+    abstract void writeMemory(TargetAddress address, ubyte[] toWrite);
 
     /**
      * Call a function in the target.
      */
-    Value call(TargetAddress address, Type returnType, Value[] args);
+    abstract Value call(TargetAddress address, Type returnType, Value[] args);
 
     /**
      * Return a value which represents a function return value of the
      * given type.
      */
-    Value returnValue(Type returnType);
+    abstract Value returnValue(Type returnType);
 
     /**
      * Scan the interval [start..end) and return the address of
      * any flow control instructions in the range. If there are none,
      * return end.
      */
-    TargetAddress findFlowControl(TargetAddress start, TargetAddress end);
+    abstract TargetAddress findFlowControl(TargetAddress start,
+					   TargetAddress end);
 
     /**
      * Scan the interval [start..end) and return the target address of
      * the first unconditional jump in the range or end if there are none.
      */
-    TargetAddress findJump(TargetAddress start, TargetAddress end);
+    abstract TargetAddress findJump(TargetAddress start, TargetAddress end);
 
     /**
      * Disassemble the instruction at 'address' advancing the value of
@@ -240,13 +241,13 @@ class MachineState: Scope
      * delegate 'lookupAddress' is used to translate machine addresses
      * to a symbolic equivalent.
      */
-    string disassemble(ref TargetAddress address,
-		       string delegate(TargetAddress) lookupAddress);
+    abstract string disassemble(ref TargetAddress address,
+				string delegate(TargetAddress) lookupAddress);
 
     /**
      * Make a copy of the machine state
      */
-    MachineState dup();
+    abstract MachineState dup();
 
     // Scope
     abstract string[] contents(MachineState);
