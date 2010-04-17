@@ -1,0 +1,20 @@
+syntax: glob
+
+*~
+*.o
+*.omc
+*.code
+.omakedb*
+src/ngdb.new
+tests/float
+tests/hello1
+tests/hello2
+tests/hello3
+tests/inline
+tests/nested
+tests/recursive
+tests/scope
+tests/segfault
+tests/structreturn
+tests/thread
+tests/vfloat
