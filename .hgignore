@@ -3,7 +3,7 @@ syntax: glob
 *~
 *.o
 *.omc
-*.code
+*.core
 .omakedb*
 src/ngdb.new
 tests/float
