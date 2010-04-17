@@ -46,115 +46,31 @@ import std.c.unix.unix;
 
 static import std.file;
 
-class ColdModule: TargetModule
+class ColdModule: TargetModuleBase
 {
     this(string filename, TargetAddress addr)
     {
+	TargetAddress start, end;
+
 	void setLimits(uint tag, TargetAddress s, TargetAddress e)
 	{
 	    if (tag != PT_LOAD)
 		return;
-	    if (s < start_)
-		start_ = s;
-	    if (e > end_)
-		end_ = e;
+	    if (s < start)
+		start = s;
+	    if (e > end)
+		end = e;
 	}
 
-	filename_ = filename;
-	start_ = cast(TargetAddress) TargetAddress.max;
-	end_ = cast(TargetAddress) 0;
-	obj_ = cast(Elffile) Objfile.open(filename_, addr);
-	if (obj_)
-	    obj_.enumerateProgramHeaders(&setLimits);
-	if (obj_ && DwarfFile.hasDebug(obj_))
-	    dwarf_ = new DwarfFile(obj_);
-    }
+	start = cast(TargetAddress) TargetAddress.max;
+	end = cast(TargetAddress) 0;
+	auto obj = cast(Elffile) Objfile.open(filename, addr);
+	if (!obj)
+	    throw new TargetException("Can't open file");
+	obj.enumerateProgramHeaders(&setLimits);
 
-    override {
-	string filename()
-	{
-	    return filename_;
-	}
-
-	TargetAddress start()
-	{
-	    return start_;
-	}
-
-	TargetAddress end()
-	{
-	    return end_;
-	}
-
-	bool contains(TargetAddress addr)
-	{
-	    return addr >= start && addr < end_;
-	}
-
-	DebugInfo debugInfo()
-	{
-	    return dwarf_;
-	}
-
-	bool lookupSymbol(string name, out TargetSymbol ts)
-	{
-	    if (obj_) {
-		Symbol* s = obj_.lookupSymbol(name);
-		if (s) {
-		    ts.name = s.name;
-		    ts.value = s.value;
-		    ts.size = s.size;
-		    return true;
-		}
-	    }
-	    return false;
-	}	
-	bool lookupSymbol(TargetAddress addr, out TargetSymbol ts)
-	{
-	    if (obj_) {
-		Symbol* s = obj_.lookupSymbol(addr);
-		if (s) {
-		    ts = TargetSymbol(s.name, s.value, s.size);
-		    return true;
-		}
-	    }
-	    return false;
-	}
-	bool inPLT(TargetAddress addr)
-	{
-	    return false;
-	}
-	string[] contents(MachineState state)
-	{
-	    if (dwarf_)
-		return dwarf_.contents(state);
-	    return null;
-	}
-	bool lookup(string name, MachineState state, out DebugItem val)
-	{
-	    if (dwarf_)
-		return dwarf_.lookup(name, state, val);
-	    return false;
-	}
-	bool lookupStruct(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupUnion(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupTypedef(string reg, out Type)
-	{
-	    return false;
-	}
-    }
-
-    MachineState getState(Target target)
-    {
-	if (obj_)
-	    return obj_.getState(target);
-	return null;
+	super(filename, start, end);
+	init;
     }
 
     string interpreter()
@@ -173,38 +89,24 @@ class ColdModule: TargetModule
 
     void digestDynamic(Target target)
     {
-	if (obj_)
-	    obj_.digestDynamic(target);
-    }
-
-    void enumerateLinkMap(Target target,
-			  void delegate(string, TargetAddress, TargetAddress) dg)
-    {
-	if (obj_)
-	    return obj_.enumerateLinkMap(target, dg);
-	return;
-    }
-
-    int opEquals(ColdModule mod)
-    {
-	return filename_ == mod.filename_
-	    && start_ == mod.start_
-	    && end_ == mod.end_;
+	if (obj_) {
+	    auto elf = cast(Elffile) obj_;
+	    if (!elf)
+		return;
+	    elf.digestDynamic(target);
+	}
     }
 
     ubyte[] readMemory(TargetAddress targetAddress, TargetSize bytes)
     {
-	if (obj_)
-	    return obj_.readProgram(targetAddress, bytes);
+	if (obj_) {
+	    auto elf = cast(Elffile) obj_;
+	    if (!elf)
+		return null;
+	    return elf.readProgram(targetAddress, bytes);
+	}
 	return null;
     }
-
-private:
-    string filename_;
-    TargetAddress start_;
-    TargetAddress end_;
-    Elffile obj_;
-    DwarfFile dwarf_;
 }
 
 class ColdThread: TargetThread
@@ -285,8 +187,12 @@ class ColdTarget: Target
 
 	listener.onTargetStarted(this);
 
-	modules_ ~= new ColdModule(execname_, cast(TargetAddress) 0);
-	listener_.onModuleAdd(this, modules_[0]);
+	try {
+	    modules_ ~= new ColdModule(execname_, cast(TargetAddress) 0);
+	    listener_.onModuleAdd(this, modules_[0]);
+	} catch (TargetException e) {
+	    return;
+	}
 
 	if (core_) {
 	    void getThread(uint type, string name, ubyte* desc)
