@@ -136,7 +136,7 @@ interface TargetThread
     /**
      * The identifiers of this thread. Identifiers start at one for
      * the main thread and increase by one for each new
-     * thread. Identifiers are not re-used withing a target.
+     * thread. Identifiers are not re-used within a target.
      */
     uint id();
 }
