@@ -88,6 +88,7 @@ class RemoteThread: TargetThread
 
     void readState()
     {
+        target_.sendReceive(std.string.format("Hg%x", tid_));
 	auto regs = target_.sendReceive("g");
 	uint regno = 0;
 
@@ -685,6 +686,7 @@ class RemoteTarget: Target
 	    auto rt = cast(RemoteThread) t;
 	    rt.writeState;
 	    state_ = TargetState.RUNNING;
+            sendReceive(std.string.format("Hs%x", rt.tid_));
 	    sendPacket("s");
 	    wait;
 	}
