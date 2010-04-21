@@ -2035,7 +2035,7 @@ class TargetCommand: Command
 		//delete target;
 	    }
 
-            TargetFactory.connect(type, db, split(args, " "));
+            TargetFactory.connect(type, db, db.prog_ ~ split(args, " "));
 	    if (db.target_)
 		db.stopped();
 	}

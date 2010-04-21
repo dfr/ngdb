@@ -19,6 +19,7 @@ objs[]=
 	objfile/objfile
 	target/ptracetarget
 	target/coldtarget
+	target/remotetarget
 	target/target
 
 objs[]+=
@@ -29,6 +30,7 @@ objs[]+=
 #DFLAGS+= -O
 #DFLAGS+= -debug=breakpoints
 #DFLAGS+= -debug=step
+#DFLAGS+= -debug=remote
 
 DFLAGS+= -I$(dir $(ROOT)/gtkD/src)
 
