@@ -113,20 +113,17 @@ class RemoteThread: TargetThread
 	{
 	    return target_;
 	}
-	MachineState state()
-	{
-	    return state_;
-	}
 	uint id()
 	{
 	    return id_;
 	}
     }
 
+    mixin TargetThreadBase;
+
     RemoteTarget target_;
     uint id_;
     uint tid_;
-    MachineState state_;
 }
 
 class RemoteBreakpoint
@@ -535,15 +532,15 @@ class RemoteTarget: Target
 		 * accordingly and find out what stopped it,
 		 * informing our listener as appropriate.
 		 */
-		t.state.adjustPcAfterBreak;
+		t.adjustPcAfterBreak;
 		foreach (bp; breakpoints_.values) {
-		    if (t.state.pc == bp.address) {
+		    if (t.pc == bp.address) {
 			bp.stoppedThreads_ ~= t;
 			ret = false;
 			foreach (tbl; bp.listeners) {
 			    debug(breakpoints)
 				writefln("hit breakpoint at 0x%x for 0x%x",
-					 t.state.pc,
+					 t.pc,
 					 cast(TargetAddress) cast(void*) tbl);
 			    if (tbl.onBreakpoint(this, t))
 				ret = true;
@@ -701,11 +698,11 @@ class RemoteTarget: Target
 		foreach (t; bp.stoppedThreads_) {
 			debug(breakpoints)
 			    writefln("stepping thread %d over breakpoint at 0x%x",
-				     t.id, t.state.pc);
+				     t.id, t.pc);
 			step(t);
 			debug(breakpoints)
 			    writefln("after step, thread %d pc is 0x%x",
-				     t.id, t.state.pc);
+				     t.id, t.pc);
 		    }
 		bp.stoppedThreads_.length = 0;
 	    }

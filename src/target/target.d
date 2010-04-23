@@ -121,24 +121,235 @@ interface TargetListener
  * This interface is used to manipulate a single thread (program counter and
  * register set) within a target.
  */
-interface TargetThread
+class TargetThread: public MachineState
 {
     /**
      * Return the target that contains this thread.
      */
-    Target target();
-
-    /**
-     * Return the machine state for this thread
-     */
-    MachineState state();
+    abstract Target target();
 
     /**
      * The identifiers of this thread. Identifiers start at one for
      * the main thread and increase by one for each new
      * thread. Identifiers are not re-used within a target.
      */
-    uint id();
+    abstract uint id();
+}
+
+/**
+ * A passthrough implementation of MachineState
+ */
+template TargetThreadBase()
+{
+    void dumpState()
+    {
+	state_.dumpState;
+    }
+
+    TargetAddress pc()
+    {
+	return state_.pc;
+    }
+
+    void pc(TargetAddress ta)
+    {
+	state_.pc = ta;
+    }
+
+    TargetAddress tp()
+    {
+	return state_.tp;
+    }
+
+    TargetAddress tls_get_addr(uint index, ulong offset)
+    {
+	return state_.tls_get_addr(index, offset);
+    }
+
+    PtraceCommand[] ptraceReadCommands()
+    {
+	return state_.ptraceReadCommands;
+    }
+
+    PtraceCommand[] ptraceWriteCommands()
+    {
+	return state_.ptraceWriteCommands;
+    }
+
+    void setGRs(ubyte* regs)
+    {
+	return state_.setGRs(regs);
+    }
+
+    void getGRs(ubyte* regs)
+    {
+	return state_.setGRs(regs);
+    }
+
+    void setGR(uint gregno, MachineRegister val)
+    {
+	return state_.setGR(gregno, val);
+    }
+
+    MachineRegister getGR(uint gregno)
+    {
+	return state_.getGR(gregno);
+    }
+
+    TargetSize grWidth(int greg)
+    {
+	return state_.grWidth(greg);
+    }
+
+    uint spregno()
+    {
+	return state_.spregno;
+    }
+
+    uint grCount()
+    {
+	return state_.grCount;
+    }
+
+    void dumpFloat()
+    {
+	return state_.dumpFloat;
+    }
+
+    void setFRs(ubyte* regs)
+    {
+	return state_.setFRs(regs);
+    }
+
+    void getFRs(ubyte* regs)
+    {
+	return state_.getFRs(regs);
+    }
+
+    ubyte[] readRegister(uint regno, TargetSize bytes)
+    {
+	return state_.readRegister(regno, bytes);
+    }
+
+    void writeRegister(uint regno, ubyte bytes[])
+    {
+	return state_.writeRegister(regno, bytes);
+    }
+
+    ubyte[] breakpoint()
+    {
+	return state_.breakpoint;
+    }
+
+    void adjustPcAfterBreak()
+    {
+	return state_.adjustPcAfterBreak;
+    }
+
+    TargetSize pointerWidth()
+    {
+	return state_.pointerWidth;
+    }
+
+    ulong readInteger(ubyte[] bytes)
+    {
+	return state_.readInteger(bytes);
+    }
+
+    TargetAddress readAddress(ubyte[] bytes)
+    {
+        return state_.readAddress(bytes);
+    }
+
+    TargetSize readSize(ubyte[] bytes)
+    {
+        return state_.readSize(bytes);
+    }
+
+    void writeInteger(ulong val, ubyte[] bytes)
+    {
+	return state_.writeInteger(val, bytes);
+    }
+
+    real readFloat(ubyte[] bytes)
+    {
+	return state_.readFloat(bytes);
+    }
+
+    void writeFloat(real val, ubyte[] bytes)
+    {
+	return state_.writeFloat(val, bytes);
+    }
+
+    ubyte[] readMemory(TargetAddress address, TargetSize bytes)
+    {
+	return state_.readMemory(address, bytes);
+    }
+
+    void writeMemory(TargetAddress address, ubyte[] toWrite)
+    {
+	return state_.writeMemory(address, toWrite);
+    }
+
+    Value call(TargetAddress address, Type returnType, Value[] args)
+    {
+	return state_.call(address, returnType, args);
+    }
+
+    Value returnValue(Type returnType)
+    {
+	return state_.returnValue(returnType);
+    }
+
+    TargetAddress findFlowControl(TargetAddress start,
+				  TargetAddress end)
+    {
+	return state_.findFlowControl(start, end);
+    }
+
+    TargetAddress findJump(TargetAddress start, TargetAddress end)
+    {
+	return state_.findJump(start, end);
+    }
+
+    string disassemble(ref TargetAddress address,
+		       string delegate(TargetAddress) lookupAddress)
+    {
+	return state_.disassemble(address, lookupAddress);
+    }
+
+    MachineState dup()
+    {
+	return state_.dup;
+    }
+
+    string[] contents(MachineState s)
+    {
+	return state_.contents(s);
+    }
+
+    bool lookup(string name, MachineState s, out DebugItem di)
+    {
+	return state_.lookup(name, s, di);
+    }
+
+    bool lookupStruct(string name, out Type ty)
+    {
+	return state_.lookupStruct(name, ty);
+    }
+
+    bool lookupUnion(string name, out Type ty)
+    {
+	return state_.lookupUnion(name, ty);
+    }
+
+    bool lookupTypedef(string name, out Type ty)
+    {
+	return state_.lookupTypedef(name, ty);
+    }
+
+private:
+    MachineState	state_;
 }
 
 struct TargetSymbol

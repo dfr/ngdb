@@ -117,9 +117,9 @@ class ColdThread: TargetThread
 	id_ = target.nextTid_++;
 	state_ = target.modules_[0].getState(target);
 	if (p)
-	    state.setGRs(p);
+	    setGRs(p);
 	else if (target.modules_[0].obj_)
-	    state.pc = target.modules_[0].obj_.entry;
+	    this.pc = target.modules_[0].obj_.entry;
     }
 
     override {
@@ -127,19 +127,16 @@ class ColdThread: TargetThread
 	{
 	    return target_;
 	}
-	MachineState state()
-	{
-	    return state_;
-	}
 	uint id()
 	{
 	    return id_;
 	}
     }
 
+    mixin TargetThreadBase;
+
     ColdTarget target_;
     uint id_;
-    MachineState state_;
 }
 
 struct prstatus32

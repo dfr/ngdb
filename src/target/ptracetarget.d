@@ -219,15 +219,13 @@ class PtraceThread: TargetThread
 	{
 	    return target_;
 	}
-	MachineState state()
-	{
-	    return state_;
-	}
 	uint id()
 	{
 	    return id_;
 	}
     }
+
+    mixin TargetThreadBase;
 
 private:
     void suspend()
@@ -296,7 +294,6 @@ private:
     PtraceTarget target_;
     uint id_;
     lwpid_t lwpid_;
-    MachineState state_;
     int waitStatus_;
     version (linux) {
 	bool suspended_;
@@ -998,15 +995,15 @@ private:
 		     * accordingly and find out what stopped it,
 		     * informing our listener as appropriate.
 		     */
-		    pt.state.adjustPcAfterBreak;
+		    pt.adjustPcAfterBreak;
 		    foreach (pbp; breakpoints_.values) {
-			if (pt.state.pc == pbp.address) {
+			if (pt.pc == pbp.address) {
 			    pbp.stoppedThreads_ ~= pt;
 			    ret = false;
 			    foreach (tbl; pbp.listeners) {
 				debug(breakpoints)
 				    writefln("hit breakpoint at 0x%x for 0x%x",
-					     pt.state.pc,
+					     pt.pc,
 					     cast(TargetAddress) cast(void*) tbl);
 				if (tbl.onBreakpoint(this, pt))
 				    ret = true;
