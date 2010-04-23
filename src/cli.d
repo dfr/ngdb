@@ -269,11 +269,10 @@ private class Breakpoint: TargetBreakpointListener
 	    db_.setCurrentFrame;
 	    auto f = db_.currentFrame;
 	    auto sc = f.scope_;
-	    auto s = t.state;
 	    try {
-		auto v = expr_.eval(sc, s).toValue(s);
+		auto v = expr_.eval(sc, t).toValue(t);
 		if (v.type.isIntegerType)
-		    if (!s.readInteger(v.loc.readValue(s)))
+		    if (!t.readInteger(v.loc.readValue(t)))
 			return false;
 	    } catch (EvalException ex) {
 		db_.pagefln("Error evaluating breakpoint condition: %s", ex.msg);
@@ -1031,24 +1030,23 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	    return false;
 
 	TargetThread t = currentThread;
-	MachineState s = t.state;
 	DebugInfo di;
 
-	if (findDebugInfo(s, di)) {
+	if (findDebugInfo(t, di)) {
 	    Location loc;
 	    Function func;
-	    if (di.findFrameBase(s, loc) && (func = di.findFunction(s.pc)) !is null) {
+	    if (di.findFrameBase(t, loc) && (func = di.findFunction(t.pc)) !is null) {
 		if (!topFrame_ || topFrame_.func_ !is func
-		    || topFrame_.addr_ != loc.address(s)) {
+		    || topFrame_.addr_ != loc.address(t)) {
 		    currentFrame_ = topFrame_ =
-			new Frame(this, 0, null, di, func, s);
+			new Frame(this, 0, null, di, func, t);
 		    return true;
 		}
 	    }
 	} else {
 	    currentFrame_ = topFrame_ =
-		new Frame(this, 0, null, null, null, s);
-	    ulong tpc = s.pc;
+		new Frame(this, 0, null, null, null, t);
+	    ulong tpc = t.pc;
 	    return true;
 	}
 	return false;
@@ -1067,15 +1065,14 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	stopped_ = true;
 
 	auto t = currentThread;
-	auto s = t.state;
 	auto newFrame = setCurrentFrame;
 	auto di = currentFrame.di_;
 
 	if (di) {
 	    if (newFrame)
-		writefln("%s", describeAddress(s.pc, s));
+		writefln("%s", describeAddress(t.pc, t));
 	    LineEntry[] le;
-	    if (di.findLineByAddress(s.pc, le)) {
+	    if (di.findLineByAddress(t.pc, le)) {
 		SourceFile sf = findFile(le[0].fullname);
 		currentSourceFile_ = stoppedSourceFile_ = sf;
 		currentSourceLine_ = stoppedSourceLine_ = le[0].line;
@@ -1085,10 +1082,10 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	    }
 	} else {
 	    currentFrame_ = topFrame_ =
-		new Frame(this, 0, null, null, null, s);
-	    TargetAddress tpc = s.pc;
-	    writefln("%s:\t%s", lookupAddress(s.pc),
-		     s.disassemble(tpc, &lookupAddress));
+		new Frame(this, 0, null, null, null, t);
+	    TargetAddress tpc = t.pc;
+	    writefln("%s:\t%s", lookupAddress(tpc),
+		     t.disassemble(tpc, &lookupAddress));
 	}
     }
 
@@ -1210,21 +1207,20 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	}
 
 	TargetThread t = currentThread;
-	MachineState s = t.state;
 	DebugInfo di;
 
 	started();
-	if (findDebugInfo(s, di)) {
+	if (findDebugInfo(t, di)) {
 	    Location frameLoc;
-	    di.findFrameBase(s, frameLoc);
-	    auto frameFunc = di.findFunction(s.pc);
+	    di.findFrameBase(t, frameLoc);
+	    auto frameFunc = di.findFunction(t.pc);
 
-	    TargetAddress frame = frameLoc.address(s);
-	    TargetAddress startpc = s.pc;
+	    TargetAddress frame = frameLoc.address(t);
+	    TargetAddress startpc = t.pc;
 	    TargetAddress stoppc, flowpc;
 
 	    LineEntry[] le;
-	    if (di.findLineByAddress(s.pc, le))
+	    if (di.findLineByAddress(t.pc, le))
 		stoppc = le[1].address;
 	    else {
 		target_.step(t);
@@ -1232,7 +1228,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		return;
 	    }
 	    setStepBreakpoint(stoppc);
-	    flowpc = s.findFlowControl(s.pc, stoppc);
+	    flowpc = t.findFlowControl(t.pc, stoppc);
 	    if (flowpc < stoppc)
 		setStepBreakpoint(flowpc);
 	    else
@@ -1245,7 +1241,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		 * next statement, whichever comes first. Be careful if
 		 * we are sitting on a flow control instruction.
 		 */
-		if (s.pc != flowpc) {
+		if (t.pc != flowpc) {
 		    target_.cont();
 		    target_.wait();
 		}
@@ -1253,20 +1249,20 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		    void stoppedAt(string msg, TargetAddress pc)
 		    {
 			writefln("%s %#x (%s)", msg, pc,
-				replace(s.disassemble(pc, &lookupAddress), "\t", " "));
+				replace(t.disassemble(pc, &lookupAddress), "\t", " "));
 		    }
 		}
-		if (s.pc == flowpc) {
+		if (t.pc == flowpc) {
 		    /*
 		     * Stopped at a flow control instruction - single step
 		     * it and see if we change frame or go out of our step
 		     * range.
 		     */
 		    debug (step)
-			stoppedAt("stopped at flow control", s.pc);
+			stoppedAt("stopped at flow control", t.pc);
 		    target_.step(t);
 		    debug (step)
-			stoppedAt("single stepped to", s.pc);
+			stoppedAt("single stepped to", t.pc);
 
 		    bool inPLT(TargetAddress pc) {
 			foreach (mod; modules_)
@@ -1275,7 +1271,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 			return false;
 		    }
 
-		    while (inPLT(s.pc)) {
+		    while (inPLT(t.pc)) {
 			debug (step)
 			    writefln("single stepping over PLT entry");
 			target_.step(t);
@@ -1283,25 +1279,25 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		    resetStep = true;
 		} else {
 		    debug (step)
-			stoppedAt("stopped at", s.pc);
+			stoppedAt("stopped at", t.pc);
 		}
-		if (!findDebugInfo(s, di)) {
+		if (!findDebugInfo(t, di)) {
 		    /*
 		     * If we step into something without debug info,
 		     * just continue until we hit the step breakpoint.
 		     */
 		    debug (step)
-			writefln("no debug info at %#x - continue", s.pc);
+			writefln("no debug info at %#x - continue", t.pc);
 		    target_.cont();
 		    target_.wait();
 		    break;
 		}
-		di.findFrameBase(s, frameLoc);
-		auto func = di.findFunction(s.pc);
-		if (frameLoc.address(s) != frame || func !is frameFunc) {
+		di.findFrameBase(t, frameLoc);
+		auto func = di.findFunction(t.pc);
+		if (frameLoc.address(t) != frame || func !is frameFunc) {
 		    debug (step)
-			writefln("new frame address %#x", frameLoc.address(s));
-		    if (frameLoc.address(s) > frame) {
+			writefln("new frame address %#x", frameLoc.address(t));
+		    if (frameLoc.address(t) > frame) {
 			debug (step)
 			    writefln("returning to outer frame");
 			break;
@@ -1313,7 +1309,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 			 */
 			debug (step)
 			    writefln("stepping over call");
-			MachineState ns = di.unwind(s);
+			MachineState ns = di.unwind(t);
 			clearStepBreakpoints();
 			TargetAddress retpc = ns.pc;
 			debug (step)
@@ -1323,21 +1319,21 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 			    target_.cont();
 			    target_.wait();
 			    debug (step)
-				stoppedAt("stopped at", s.pc);
-			    if (s.pc != retpc
-				|| !di.findFrameBase(s, frameLoc))
+				stoppedAt("stopped at", t.pc);
+			    if (t.pc != retpc
+				|| !di.findFrameBase(t, frameLoc))
 				break;
 			    debug (step)
-				if (frameLoc.address(s) < frame)
+				if (frameLoc.address(t) < frame)
 				    writefln("stopped at inner frame %#x - continuing", frameLoc.address(s));
-			} while (target_ && frameLoc.address(s) != frame);
+			} while (target_ && frameLoc.address(t) != frame);
 			resetStep = true;
 		    } else {
 			clearStepBreakpoints();
 			break;
 		    }
 		}
-		if (s.pc < startpc || s.pc >= stoppc) {
+		if (t.pc < startpc || t.pc >= stoppc) {
 		    debug (step)
 			writefln("stepped outside range %#x..%#x", startpc, stoppc);
 		    break;
@@ -1345,13 +1341,13 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		if (resetStep) {
 		    clearStepBreakpoints();
 		    setStepBreakpoint(stoppc);
-		    flowpc = s.findFlowControl(s.pc, stoppc);
+		    flowpc = t.findFlowControl(t.pc, stoppc);
 		    if (flowpc < stoppc)
 			setStepBreakpoint(flowpc);
 		    else
 			flowpc = TA0;
 		}
-	    } while (s.pc < stoppc);
+	    } while (t.pc < stoppc);
 	    clearStepBreakpoints();
 	    stopped();
 	} else {
@@ -1370,26 +1366,25 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	started();
 
 	TargetThread t = currentThread;
-	MachineState s = t.state;
 
 	TargetAddress frame;
 	DebugInfo di;
 
-	if (findDebugInfo(s, di)) {
+	if (findDebugInfo(t, di)) {
 	    Location frameLoc;
-	    di.findFrameBase(s, frameLoc);
-	    frame = frameLoc.address(s);
+	    di.findFrameBase(t, frameLoc);
+	    frame = frameLoc.address(t);
 	}
 
 	target_.step(t);
 	
-	if (findDebugInfo(s, di)) {
+	if (findDebugInfo(t, di)) {
 	    Location frameLoc;
-	    di.findFrameBase(s, frameLoc);
-	    if (frameLoc.address(s) != frame) {
+	    di.findFrameBase(t, frameLoc);
+	    if (frameLoc.address(t) != frame) {
 		debug (step)
-		    writefln("new frame address %#x", frameLoc.address(s));
-		if (frameLoc.address(s) > frame) {
+		    writefln("new frame address %#x", frameLoc.address(t));
+		if (frameLoc.address(t) > frame) {
 		    debug (step)
 			writefln("returning to outer frame");
 		    stopped();
@@ -1402,7 +1397,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		     */
 		    debug (step)
 			writefln("stepping over call");
-		    MachineState ns = di.unwind(s);
+		    MachineState ns = di.unwind(t);
 		    clearStepBreakpoints();
 		    TargetAddress retpc = ns.pc;
 		    debug (step)
@@ -1412,21 +1407,21 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 			target_.cont();
 			target_.wait();
 			clearStepBreakpoints();
-			if (s.pc != retpc
-			    || !di.findFrameBase(s, frameLoc))
+			if (t.pc != retpc
+			    || !di.findFrameBase(t, frameLoc))
 			    break;
 			debug (step)
-			    if (frameLoc.address(s) < frame)
-				writefln("stopped at inner frame %#x - continuing", frameLoc.address(s));
-		    } while (frameLoc.address(s) != frame);
+			    if (frameLoc.address(t) < frame)
+				writefln("stopped at inner frame %#x - continuing", frameLoc.address(t));
+		    } while (frameLoc.address(t) != frame);
 		}
 	    }
 	}
 	stopped();
 	if (currentFrame.func_) {
-	    TargetAddress tpc = s.pc;
-	    pagefln("%s:\t%s", lookupAddress(s.pc),
-		    s.disassemble(tpc, &lookupAddress));
+	    TargetAddress tpc = t.pc;
+	    pagefln("%s:\t%s", lookupAddress(tpc),
+		    t.disassemble(tpc, &lookupAddress));
 	}
     }
 
@@ -1587,7 +1582,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	if (f)
 	    s = f.state_;
 	else
-	    s = currentThread.state;
+	    s = currentThread;
 
 	Scope sc;
 	Language lang;
@@ -2273,7 +2268,7 @@ class FinishCommand: Command
 	    if (!db.currentThread)
 		return;
 	    if (rTy) {
-		MachineState s = db.currentThread.state;
+		MachineState s = db.currentThread;
 		Value val = s.returnValue(rTy);
 		db.pagefln("Value returned is %s", val.toString(null, s));
 	    }
@@ -2314,7 +2309,7 @@ class BreakCommand: Command
 	    if (args.length == 0)
 		return null;
 
-	    auto state = db.currentThread ? db.currentThread.state : null;
+	    auto state = db.currentThread ? db.currentThread : null;
 	    string[] syms = db.contents(state);
 	    string[] matches;
 	    foreach (sym; syms)
@@ -2616,7 +2611,7 @@ class InfoModulesCommand: Command
 	{
 	    TargetAddress pc;
 	    if (db.currentThread)
-		pc = db.currentThread.state.pc;
+		pc = db.currentThread.pc;
 	    foreach (i, mod; db.modules_) {
 		string addrs = format("%#x .. %#x", mod.start, mod.end);
 		bool active = false;
@@ -2653,7 +2648,7 @@ class InfoThreadCommand: Command
 		db.pagefln("%s %-2d: %s",
 			   t == db.currentThread ? "*" : " ",
 			   t.id,
-			   db.describeAddress(t.state.pc, t.state));
+			   db.describeAddress(t.pc, t));
 	    }
 	}
     }
@@ -3083,7 +3078,7 @@ class ExamineCommand: Command
 	    if (f)
 		s = f.state_;
 	    else if (db.currentThread)
-		s = db.currentThread.state;
+		s = db.currentThread;
 
 	    if (args.length > 0 && args[0] == '/') {
 		if (!db.parseFormat(args, count_, width_, fmt_))
