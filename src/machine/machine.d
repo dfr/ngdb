@@ -123,6 +123,11 @@ class MachineState: Scope
     abstract void getFRs(ubyte* regs);
 
     /**
+     * Map a dwarf register number to a MachineState register number.
+     */
+    abstract uint mapDwarfRegno(int dwregno);
+
+    /**
      * Return the width of a register in bytes. Register index
      * corresponds to dwarf register number.
      */
