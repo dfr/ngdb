@@ -1794,7 +1794,7 @@ struct Expr
 		continue;
 	    }
 	    if (op >= DW_OP_breg0 && op <= DW_OP_breg31) {
-		v = cast(long) state.getGR(op - DW_OP_breg0)
+		v = cast(long) state.readIntRegister(op - DW_OP_breg0)
 		    + dw.parseSLEB128(p);
 		stack.push(v);
 		continue;
@@ -1858,7 +1858,7 @@ struct Expr
 		break;
 
 	    case DW_OP_bregx:
-		v = cast(long) state.getGR(dw.parseULEB128(p))
+		v = cast(long) state.readIntRegister(dw.parseULEB128(p))
 		    + dw.parseSLEB128(p);
 		stack.push(v);
 		break;
@@ -3241,7 +3241,7 @@ class FDE
 	fdeFs = cieFs;
 	execute(instructionStart, instructionEnd, pc, fdeFs, cieFs);
 
-	auto reg = state.getGR(fdeFs.cfaReg);
+	auto reg = state.readIntRegister(fdeFs.cfaReg);
 	return new MemoryLocation(cast(TargetAddress) (reg + fdeFs.cfaOffset),
                                   TS1);
     }
@@ -3263,7 +3263,7 @@ class FDE
 	    return null;
 	MachineState newState = state.dup;
 	MachineRegister cfa = cast(MachineRegister)
-            (state.getGR(fdeFs.cfaReg) + fdeFs.cfaOffset);
+            (state.readIntRegister(fdeFs.cfaReg) + fdeFs.cfaOffset);
 	foreach (i, rl; fdeFs.regs) {
 	    long off;
 	    ubyte[] b;
@@ -3271,23 +3271,25 @@ class FDE
 	    case RLoc.Rule.undefined:
 	    case RLoc.Rule.sameValue:
 		if (i == state.spregno)
-		    newState.setGR(i, cfa);
+		    newState.writeIntRegister(i, cfa);
 		break;
 
 	    case RLoc.Rule.offsetN:
 		off = rl.N;
 		b = state.readMemory(cast(TargetAddress) (cfa + off),
                                      cast(TargetSize) (dw.obj_.is64 ? 8 : 4));
-		newState.setGR(i, cast(MachineRegister) dw.obj_.read(b));
+		newState.writeIntRegister
+		    (i, cast(MachineRegister) dw.obj_.read(b));
 		break;
 
 	    case RLoc.Rule.valOffsetN:
 		off = rl.N;
-		newState.setGR(i, cast(MachineRegister) (cfa + off));
+		newState.writeIntRegister
+		    (i, cast(MachineRegister) (cfa + off));
 		break;
 		    
 	    case RLoc.Rule.registerR:
-		newState.setGR(i, state.getGR(rl.R));
+		newState.writeIntRegister(i, state.readIntRegister(rl.R));
 		break;
 
 	    case RLoc.Rule.expressionE:

@@ -158,22 +158,6 @@ class ArmState: MachineState
 	{
 	}
 
-	void setGR(uint gregno, MachineRegister val)
-	{
-	    gregs_[gregno] = val;
-	    grdirty_ = true;
-	}
-
-	MachineRegister getGR(uint gregno)
-	{
-	    return cast(MachineRegister) gregs_[gregno];
-	}
-
-	TargetSize grWidth(int greg)
-	{
-	    return TS4;
-	}
-
 	uint spregno()
 	{
 	    return 4;
@@ -202,6 +186,32 @@ class ArmState: MachineState
 
 	void getFRs(ubyte* regs)
 	{
+	}
+
+	MachineRegister readIntRegister(uint regno)
+	{
+	    if (regno >= ArmReg.GR_COUNT)
+		throw new TargetException(
+		    format("Unsupported register index %d", regno));
+	    return cast(MachineRegister) gregs_[regno];
+	}
+
+	TargetSize registerWidth(int regno)
+	{
+	    if (regno < ArmReg.GR_COUNT)
+		return TS4;
+	    else
+		throw new TargetException(
+		    format("Unsupported register index %d", regno));
+	}
+
+	void writeIntRegister(uint regno, MachineRegister val)
+	{
+	    if (regno >= ArmReg.GR_COUNT)
+		throw new TargetException(
+		    format("Unsupported register index %d", regno));
+	    gregs_[regno] = val;
+	    grdirty_ = true;
 	}
 
 	ubyte[] readRegister(uint regno, TargetSize bytes)
@@ -301,7 +311,8 @@ class ArmState: MachineState
 	Value returnValue(Type returnType)
 	{
 	    // XXX do this properly
-	    return new Value(new ConstantLocation(readRegister(0, grWidth(0))),
+	    return new Value(new ConstantLocation(readRegister
+						  (0, registerWidth(0))),
 			     returnType);
 	}
 
@@ -382,9 +393,9 @@ class ArmState: MachineState
 
     Value regAsValue(uint i)
     {
-	auto loc = new RegisterLocation(i, grWidth(i));
+	auto loc = new RegisterLocation(i, registerWidth(i));
 	auto ty = CLikeLanguage.instance.integerType(
-	    "uint32_t", false, grWidth(i));
+	    "uint32_t", false, registerWidth(i));
 	return new Value(loc, ty);
     }
 

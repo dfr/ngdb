@@ -93,11 +93,10 @@ class RemoteThread: TargetThread
 	uint regno = 0;
 
 	while (regs.length > 0) {
-	    uint n = state_.grWidth(regno);
-	    if (regs[0] != 'x' && regno < state_.grCount) {
+	    uint n = state_.registerWidth(regno);
+	    if (regs[0] != 'x') {
 		auto regval = target_.decodeBytes(regs[0..2*n]);
-		state_.setGR(regno,
-			     cast(MachineRegister) state_.readInteger(regval));
+		state_.writeRegister(regno, regval);
 	    }
 	    regs = regs[2*n..$];
 	    regno++;
