@@ -41,6 +41,9 @@ struct PtraceCommand
     uint	data;
 }
 
+/**
+ * An integer register value.
+ */
 typedef ulong MachineRegister;
 
 /**
@@ -95,21 +98,6 @@ class MachineState: Scope
     abstract void getGRs(ubyte* regs);
 
     /**
-     * Set a general register by register number.
-     */
-    abstract void setGR(uint gregno, MachineRegister val);
-
-    /**
-     * Get a general register by register number.
-     */
-    abstract MachineRegister getGR(uint gregno);
-
-    /**
-     * Return the width in bytes of a general register
-     */
-    abstract TargetSize grWidth(int greg);
-
-    /**
      * Return the stack pointer register index.
      */
     abstract uint spregno();
@@ -133,6 +121,24 @@ class MachineState: Scope
      * Get the values of all the floating point registers.
      */
     abstract void getFRs(ubyte* regs);
+
+    /**
+     * Return the width of a register in bytes. Register index
+     * corresponds to dwarf register number.
+     */
+    abstract TargetSize registerWidth(int regno);
+
+    /**
+     * Read an integer register value. Register index corresponds to
+     * dwarf register number.
+     */
+    abstract MachineRegister readIntRegister(uint regno);
+
+    /**
+     * Write an integer register value. Register index corresponds to
+     * dwarf register number.
+     */
+    abstract void writeIntRegister(uint regno, MachineRegister value);
 
     /**
      * Read raw register bytes in target byte order. Register index

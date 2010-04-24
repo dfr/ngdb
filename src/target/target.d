@@ -186,21 +186,6 @@ template TargetThreadBase()
 	return state_.setGRs(regs);
     }
 
-    void setGR(uint gregno, MachineRegister val)
-    {
-	return state_.setGR(gregno, val);
-    }
-
-    MachineRegister getGR(uint gregno)
-    {
-	return state_.getGR(gregno);
-    }
-
-    TargetSize grWidth(int greg)
-    {
-	return state_.grWidth(greg);
-    }
-
     uint spregno()
     {
 	return state_.spregno;
@@ -224,6 +209,21 @@ template TargetThreadBase()
     void getFRs(ubyte* regs)
     {
 	return state_.getFRs(regs);
+    }
+
+    TargetSize registerWidth(int regno)
+    {
+	return state_.registerWidth(regno);
+    }
+
+    MachineRegister readIntRegister(uint regno)
+    {
+	return state_.readIntRegister(regno);
+    }
+
+    void writeIntRegister(uint regno, MachineRegister value)
+    {
+	return state_.writeIntRegister(regno, value);
     }
 
     ubyte[] readRegister(uint regno, TargetSize bytes)

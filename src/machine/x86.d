@@ -166,7 +166,7 @@ class X86State: MachineState
 	void dumpState()
 	{
 	    for (auto i = 0; i <= EFLAGS; i++) {
-		uint32_t val = getGR(i);
+		uint32_t val = readIntRegister(i);
 		writef("%6s:%08x ", RegNames[i], val);
 		if ((i & 3) == 3)
 		    writefln("");
@@ -255,22 +255,6 @@ class X86State: MachineState
 	void getGRs(ubyte* p)
 	{
 	    *cast(reg32*) p = regs_;
-	}
-
-	void setGR(uint gregno, MachineRegister val)
-	{
-	    *grAddr(gregno) = val;
-	    grdirty_ = true;
-	}
-
-	MachineRegister getGR(uint gregno)
-	{
-	    return cast(MachineRegister) *grAddr(gregno);
-	}
-
-	TargetSize grWidth(int greg)
-	{
-	    return TS4;
 	}
 
 	uint spregno()
@@ -392,6 +376,32 @@ class X86State: MachineState
 	void getFRs(ubyte* regs)
 	{
 	    *cast(xmmreg32*) regs = fpregs_;
+	}
+
+	TargetSize registerWidth(int regno)
+	{
+	    if (regno <= TRAPNO)
+		return TS4;
+	    else if (regno >= ST0 && regno <= ST7)
+		return TS10;
+	    else if (regno >= XMM0 && regno <= XMM7)
+		return TS16;
+	    else if (regno >= MM0 && regno <= MM7)
+		return TS8;
+	    else
+		throw new TargetException(
+		    format("Unsupported register index %d", regno));
+	}
+
+	MachineRegister readIntRegister(uint regno)
+	{
+	    return cast(MachineRegister) *grAddr(regno);
+	}
+
+	void writeIntRegister(uint regno, MachineRegister value)
+	{
+	    *grAddr(regno) = value;
+	    grdirty_ = true;
 	}
 
 	ubyte[] readRegister(uint regno, TargetSize bytes)
@@ -823,17 +833,17 @@ class X86State: MachineState
 
     Value regAsValue(uint i, Type ty)
     {
-	auto loc = new RegisterLocation(i, grWidth(i));
+	auto loc = new RegisterLocation(i, registerWidth(i));
 	return new Value(loc, ty);
     }
 
 private:
-    uint32_t* grAddr(uint gregno)
+    uint32_t* grAddr(uint regno)
     {
-	assert(gregno <= TRAPNO);
-	if (regmap_[gregno] == ~0)
-	    return null;
-	return cast(uint32_t*) (cast(ubyte*) &regs_ + regmap_[gregno]);
+	if (regno > TRAPNO || regmap_[regno] == ~0)
+	    throw new TargetException(
+		format("Unsupported register index %d", regno));
+	return cast(uint32_t*) (cast(ubyte*) &regs_ + regmap_[regno]);
     }
 
     union float32 {
@@ -1043,7 +1053,7 @@ class X86_64State: MachineState
 	void dumpState()
 	{
 	    for (auto i = 0; i <= RIP; i++) {
-		uint64_t val = getGR(i);
+		uint64_t val = readIntRegister(i);
 		writef("%6s:%016x ", RegNames[i], val);
 		if ((i & 1) == 1)
 		    writefln("");
@@ -1129,22 +1139,6 @@ class X86_64State: MachineState
 	void getGRs(ubyte* p)
 	{
 	    *cast(reg64*) p = regs_;
-	}
-
-	void setGR(uint gregno, MachineRegister val)
-	{
-	    *grAddr(gregno) = val;
-	    grdirty_ = true;
-	}
-
-	MachineRegister getGR(uint gregno)
-	{
-	    return cast(MachineRegister) *grAddr(gregno);
-	}
-
-	TargetSize grWidth(int greg)
-	{
-	    return TS8;
 	}
 
 	uint spregno()
@@ -1266,6 +1260,34 @@ class X86_64State: MachineState
 	void getFRs(ubyte* regs)
 	{
 	    *cast(xmmreg64*) regs = fpregs_;
+	}
+
+	TargetSize registerWidth(int regno)
+	{
+	    if (regno <= RIP)
+		return TS8;
+	    else if (regno >= ST0 && regno <= ST7)
+		return TS10;
+	    else if (regno >= XMM0 && regno <= XMM15)
+		return TS16;
+	    else if (regno >= MM0 && regno <= MM7)
+		return TS8;
+	    else if (regno == RFLAGS)
+		return TS8;
+	    else
+		throw new TargetException(
+		    format("Unsupported register index %d", regno));
+	}
+
+	MachineRegister readIntRegister(uint gregno)
+	{
+	    return cast(MachineRegister) *grAddr(gregno);
+	}
+
+	void writeIntRegister(uint regno, MachineRegister val)
+	{
+	    *grAddr(regno) = val;
+	    grdirty_ = true;
 	}
 
 	ubyte[] readRegister(uint regno, TargetSize bytes)
@@ -1785,17 +1807,17 @@ class X86_64State: MachineState
 
     Value regAsValue(uint i, Type ty)
     {
-	auto loc = new RegisterLocation(i, grWidth(i));
+	auto loc = new RegisterLocation(i, registerWidth(i));
 	return new Value(loc, ty);
     }
 
 private:
-    uint64_t* grAddr(uint gregno)
+    uint64_t* grAddr(uint regno)
     {
-	assert(gregno <= RIP);
-	if (regmap_[gregno] == ~0)
-	    return null;
-	return cast(uint64_t*) (cast(ubyte*) &regs_ + regmap_[gregno]);
+	if (regno > RIP || regmap_[regno] == ~0)
+	    throw new TargetException(
+		format("Unsupported register index %d", regno));
+	return cast(uint64_t*) (cast(ubyte*) &regs_ + regmap_[regno]);
     }
 
     enum {
