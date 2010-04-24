@@ -91,12 +91,20 @@ class RemoteThread: TargetThread
         target_.sendReceive(std.string.format("Hg%x", tid_));
 	auto regs = target_.sendReceive("g");
 	uint regno = 0;
+	uint off = 0;
 
 	while (regs.length > 0) {
-	    uint n = state_.registerWidth(regno);
-	    if (regs[0] != 'x') {
-		auto regval = target_.decodeBytes(regs[0..2*n]);
-		state_.writeRegister(regno, regval);
+	    uint n;
+	    try {
+		n = state_.registerWidth(regno);
+		writefln("%d: %d, %d", regno, off, n);
+		off += n;
+		if (regs[0] != 'x') {
+		    auto regval = target_.decodeBytes(regs[0..2*n]);
+		    state_.writeRegister(regno, regval);
+		}
+	    } catch (TargetException te) {
+		break;
 	    }
 	    regs = regs[2*n..$];
 	    regno++;

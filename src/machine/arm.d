@@ -196,6 +196,11 @@ class ArmState: MachineState
 	    return cast(MachineRegister) gregs_[regno];
 	}
 
+	uint mapDwarfRegno(int dwregno)
+	{
+	    return dwregno;
+	}
+
 	TargetSize registerWidth(int regno)
 	{
 	    if (regno < ArmReg.GR_COUNT)

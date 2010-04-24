@@ -48,48 +48,103 @@ version (LittleEndian)
 class X86State: MachineState
 {
     /**
-     * Register numbers are chosen to match Dwarf debug info.
+     * Register numbers are chosen to match GDB.
      */
     enum
     {
-	EAX	= 0,
-	ECX	= 1,
-	EDX	= 2,
-	EBX	= 3,
-	ESP	= 4,
-	EBP	= 5,
-	ESI	= 6,
-	EDI	= 7,
-	EIP	= 8,
-	EFLAGS	= 9,
-	TRAPNO	= 10,
+	EAX,
+	ECX,
+	EDX,
+	EBX,
+	ESP,
+	EBP,
+	ESI,
+	EDI,
+	EIP,
+	EFLAGS,
+	CS,
+	SS,
+	DS,
+	ES,
+	FS,
+	GS,
+	ST0,
+	ST1,
+	ST2,
+	ST3,
+	ST4,
+	ST5,
+	ST6,
+	ST7,
+	FCTRL,
+	FSTAT,
+	FTAG,
+	FISEG,
+	FIOFF,
+	FOSEG,
+	FOOFF,
+	FOP,
+	XMM0,
+	XMM1,
+	XMM2,
+	XMM3,
+	XMM4,
+	XMM5,
+	XMM6,
+	XMM7,
+	MXCSR,
+	MM0,
+	MM1,
+	MM2,
+	MM3,
+	MM4,
+	MM5,
+	MM6,
+	MM7,
+    }
 
-	ST0	= 11,
-	ST1	= 12,
-	ST2	= 13,
-	ST3	= 14,
-	ST4	= 15,
-	ST5	= 16,
-	ST6	= 17,
-	ST7	= 18,
+    /**
+     * Dwarf uses different register numbers
+     */
+    enum
+    {
+	DW_EAX	= 0,
+	DW_ECX	= 1,
+	DW_EDX	= 2,
+	DW_EBX	= 3,
+	DW_ESP	= 4,
+	DW_EBP	= 5,
+	DW_ESI	= 6,
+	DW_EDI	= 7,
+	DW_EIP	= 8,
+	DW_EFLAGS = 9,
 
-	XMM0	= 21,
-	XMM1	= 22,
-	XMM2	= 23,
-	XMM3	= 24,
-	XMM4	= 25,
-	XMM5	= 26,
-	XMM6	= 27,
-	XMM7	= 28,
+	DW_ST0	= 11,
+	DW_ST1	= 12,
+	DW_ST2	= 13,
+	DW_ST3	= 14,
+	DW_ST4	= 15,
+	DW_ST5	= 16,
+	DW_ST6	= 17,
+	DW_ST7	= 18,
 
-	MM0	= 29,
-	MM1	= 30,
-	MM2	= 31,
-	MM3	= 32,
-	MM4	= 33,
-	MM5	= 34,
-	MM6	= 35,
-	MM7	= 36,
+	DW_XMM0	= 21,
+	DW_XMM1	= 22,
+	DW_XMM2	= 23,
+	DW_XMM3	= 24,
+	DW_XMM4	= 25,
+	DW_XMM5	= 26,
+	DW_XMM6	= 27,
+	DW_XMM7	= 28,
+
+	DW_MM0	= 29,
+	DW_MM1	= 30,
+	DW_MM2	= 31,
+	DW_MM3	= 32,
+	DW_MM4	= 33,
+	DW_MM5	= 34,
+	DW_MM6	= 35,
+	DW_MM7	= 36,
     }
 
     static string[] RegNames = [
@@ -378,14 +433,31 @@ class X86State: MachineState
 	    *cast(xmmreg32*) regs = fpregs_;
 	}
 
+	uint mapDwarfRegno(int dwregno)
+	{
+	    if (dwregno <= DW_EFLAGS)
+		return dwregno;
+	    if (dwregno >= DW_ST0 && dwregno < DW_ST7)
+		return dwregno - DW_ST0 + ST0;
+	    if (dwregno >= DW_XMM0 && dwregno < DW_XMM7)
+		return dwregno - DW_XMM0 + XMM0;
+	    if (dwregno >= DW_MM0 && dwregno < DW_MM7)
+		return dwregno - DW_MM0 + MM0;
+	    assert(false);
+	}
+
 	TargetSize registerWidth(int regno)
 	{
-	    if (regno <= TRAPNO)
+	    if (regno <= GS)
 		return TS4;
 	    else if (regno >= ST0 && regno <= ST7)
 		return TS10;
+	    else if (regno >= FCTRL && regno <= FOP)
+		return TS4;
 	    else if (regno >= XMM0 && regno <= XMM7)
 		return TS16;
+	    else if (regno == MXCSR)
+		return TS4;
 	    else if (regno >= MM0 && regno <= MM7)
 		return TS8;
 	    else
@@ -407,7 +479,7 @@ class X86State: MachineState
 	ubyte[] readRegister(uint regno, TargetSize bytes)
 	{
 	    ubyte[] v;
-	    if (regno <= TRAPNO) {
+	    if (regno <= GS) {
 		assert(bytes <= 4);
 		v.length = bytes;
 		v[] = (cast(ubyte*) grAddr(regno))[0..bytes];
@@ -429,6 +501,10 @@ class X86State: MachineState
 		v.length = bytes;
 		v[] = (cast(ubyte*) &fpregs_.xmm_reg[regno-XMM0])
 		    [0..bytes];
+	    } else if (regno == MXCSR) {
+		assert(bytes <= 4);
+		v.length = bytes;
+		v[] = (cast(ubyte*) &fpregs_.xmm_env[6])[0..bytes];
 	    } else if (regno >= MM0 && regno <= MM7) {
 		assert(bytes <= 8);
 		v.length = bytes;
@@ -443,12 +519,12 @@ class X86State: MachineState
 
 	void writeRegister(uint regno, ubyte[] v)
 	{
-	    if (regno < 10) {
+	    if (regno <= GS) {
 		assert(v.length <= 4);
 		(cast(ubyte*) grAddr(regno))[0..v.length] = v[];
 		grdirty_ = true;
-	    } else if (regno >= 11 && regno <= 18) {
-		ubyte* reg = fpregs_.xmm_acc[regno-11].ptr;
+	    } else if (regno >= ST0 && regno <= ST7) {
+		ubyte* reg = fpregs_.xmm_acc[regno-ST0].ptr;
 		assert(v.length <= 10);
 		switch (v.length) {
 		case 4:
@@ -460,15 +536,18 @@ class X86State: MachineState
 		    reg[0..v.length] = v[];
 		}
 		fpdirty_ = true;
-	    } else if (regno >= 21 && regno <= 28) {
+	    } else if (regno >= XMM0 && regno <= XMM7) {
 		assert(v.length <= 16);
-		(cast(ubyte*) &fpregs_.xmm_reg[regno-21])[0..v.length] = v[];
+		(cast(ubyte*) &fpregs_.xmm_reg[regno-XMM0])[0..v.length] = v[];
 		fpdirty_ = true;
-	    } else if (regno >= 29 && regno <= 36) {
+	    } else if (regno == MXCSR) {
+		assert(v.length <= 4);
+		(cast(ubyte*) &fpregs_.xmm_env[6])[0..v.length] = v[];
+	    } else if (regno >= MM0 && regno <= MM7) {
 		assert(v.length <= 8);
-		(cast(ubyte*) &fpregs_.xmm_acc[regno-29])[0..v.length] = v[];
+		(cast(ubyte*) &fpregs_.xmm_acc[regno-MM0])[0..v.length] = v[];
 		fpdirty_ = true;
-	    } else {
+	    } else if (regno > MM7) {
 		throw new TargetException(
 		    format("Unsupported register index %d", regno));
 	    }
@@ -801,17 +880,17 @@ class X86State: MachineState
 	    }
 	    if (reg.length == 3 && reg[0..2] == "st"
 		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(11 + reg[2] - '0', frType_);
+		val = regAsValue(ST0 + reg[2] - '0', frType_);
 		return true;
 	    }
 	    if (reg.length == 4 && reg[0..3] == "xmm"
 		&& reg[3] >= '0' && reg[3] <= '7') {
-		val = regAsValue(21 + reg[3] - '0', xmmType_);
+		val = regAsValue(XMM0 + reg[3] - '0', xmmType_);
 		return true;
 	    }
 	    if (reg.length == 3 && reg[0..2] == "mm"
 		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(29 + reg[2] - '0', mmType_);
+		val = regAsValue(MM0 + reg[2] - '0', mmType_);
 		return true;
 	    }
 		
@@ -840,7 +919,7 @@ class X86State: MachineState
 private:
     uint32_t* grAddr(uint regno)
     {
-	if (regno > TRAPNO || regmap_[regno] == ~0)
+	if (regno > GS || regmap_[regno] == ~0)
 	    throw new TargetException(
 		format("Unsupported register index %d", regno));
 	return cast(uint32_t*) (cast(ubyte*) &regs_ + regmap_[regno]);
@@ -866,7 +945,12 @@ private:
 	    reg32.r_edi.offsetof,	// EDI
 	    reg32.r_eip.offsetof,	// EIP
 	    reg32.r_eflags.offsetof,	// EFLAGS
-	    reg32.r_trapno.offsetof	// TRAPNO
+	    reg32.r_cs.offsetof,	// CS
+	    reg32.r_ss.offsetof,	// SS
+	    reg32.r_ds.offsetof,	// DS
+	    reg32.r_es.offsetof,	// ES
+	    reg32.r_fs.offsetof,	// FS
+	    reg32.r_gs.offsetof,	// GS
 	    ];
     }
     version (linux) {
@@ -1260,6 +1344,11 @@ class X86_64State: MachineState
 	void getFRs(ubyte* regs)
 	{
 	    *cast(xmmreg64*) regs = fpregs_;
+	}
+
+	uint mapDwarfRegno(int dwregno)
+	{
+	    assert(false);
 	}
 
 	TargetSize registerWidth(int regno)
@@ -1769,23 +1858,23 @@ class X86_64State: MachineState
 	    }
 	    if (reg.length == 3 && reg[0..2] == "st"
 		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(33 + reg[2] - '0', frType_);
+		val = regAsValue(ST0 + reg[2] - '0', frType_);
 		return true;
 	    }
 	    if (reg.length == 4 && reg[0..3] == "xmm"
 		&& reg[3] >= '0' && reg[3] <= '9') {
-		val = regAsValue(17 + reg[3] - '0', xmmType_);
+		val = regAsValue(XMM0 + reg[3] - '0', xmmType_);
 		return true;
 	    }
 	    if (reg.length == 5 && reg[0..3] == "xmm"
 		&& reg[3] == '1'
 		&& reg[4] >= '0' && reg[4] <= '5') {
-		val = regAsValue(17 + 10 + reg[4] - '0', xmmType_);
+		val = regAsValue(XMM0 + 10 + reg[4] - '0', xmmType_);
 		return true;
 	    }
 	    if (reg.length == 3 && reg[0..2] == "mm"
 		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(41 + reg[2] - '0', mmType_);
+		val = regAsValue(MM0 + reg[2] - '0', mmType_);
 		return true;
 	    }
 		

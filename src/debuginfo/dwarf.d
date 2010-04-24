@@ -1794,7 +1794,8 @@ struct Expr
 		continue;
 	    }
 	    if (op >= DW_OP_breg0 && op <= DW_OP_breg31) {
-		v = cast(long) state.readIntRegister(op - DW_OP_breg0)
+		uint regno = state.mapDwarfRegno(op - DW_OP_breg0);
+		v = cast(long) state.readIntRegister(regno)
 		    + dw.parseSLEB128(p);
 		stack.push(v);
 		continue;
@@ -1858,7 +1859,8 @@ struct Expr
 		break;
 
 	    case DW_OP_bregx:
-		v = cast(long) state.readIntRegister(dw.parseULEB128(p))
+		uint regno = state.mapDwarfRegno(dw.parseULEB128(p));
+		v = cast(long) state.readIntRegister(regno)
 		    + dw.parseSLEB128(p);
 		stack.push(v);
 		break;
@@ -2114,11 +2116,11 @@ struct Expr
 	    auto op = *p;
 	    if (op >= DW_OP_reg0 && op <= DW_OP_reg31) {
 		p++;
-		uint regno = op - DW_OP_reg0;
+		uint regno = state.mapDwarfRegno(op - DW_OP_reg0);
 		loc = new RegisterLocation(regno, length);
 	    } else if (op == DW_OP_regx) {
 		p++;
-		uint regno = dw.parseULEB128(p);
+		uint regno = state.mapDwarfRegno(dw.parseULEB128(p));
 		loc = new RegisterLocation(regno, length);
 	    } else {
 		ValueStack stack;
@@ -3241,7 +3243,7 @@ class FDE
 	fdeFs = cieFs;
 	execute(instructionStart, instructionEnd, pc, fdeFs, cieFs);
 
-	auto reg = state.readIntRegister(fdeFs.cfaReg);
+	auto reg = state.readIntRegister(state.mapDwarfRegno(fdeFs.cfaReg));
 	return new MemoryLocation(cast(TargetAddress) (reg + fdeFs.cfaOffset),
                                   TS1);
     }
@@ -3263,15 +3265,17 @@ class FDE
 	    return null;
 	MachineState newState = state.dup;
 	MachineRegister cfa = cast(MachineRegister)
-            (state.readIntRegister(fdeFs.cfaReg) + fdeFs.cfaOffset);
+            (state.readIntRegister(state.mapDwarfRegno(fdeFs.cfaReg))
+	     + fdeFs.cfaOffset);
 	foreach (i, rl; fdeFs.regs) {
 	    long off;
 	    ubyte[] b;
+	    uint regno = state.mapDwarfRegno(i);
 	    switch (rl.rule) {
 	    case RLoc.Rule.undefined:
 	    case RLoc.Rule.sameValue:
-		if (i == state.spregno)
-		    newState.writeIntRegister(i, cfa);
+		if (regno == state.spregno)
+		    newState.writeIntRegister(regno, cfa);
 		break;
 
 	    case RLoc.Rule.offsetN:
@@ -3279,17 +3283,19 @@ class FDE
 		b = state.readMemory(cast(TargetAddress) (cfa + off),
                                      cast(TargetSize) (dw.obj_.is64 ? 8 : 4));
 		newState.writeIntRegister
-		    (i, cast(MachineRegister) dw.obj_.read(b));
+		    (regno, cast(MachineRegister) dw.obj_.read(b));
 		break;
 
 	    case RLoc.Rule.valOffsetN:
 		off = rl.N;
 		newState.writeIntRegister
-		    (i, cast(MachineRegister) (cfa + off));
+		    (regno, cast(MachineRegister) (cfa + off));
 		break;
 		    
 	    case RLoc.Rule.registerR:
-		newState.writeIntRegister(i, state.readIntRegister(rl.R));
+		newState.writeIntRegister(regno,
+					  state.readIntRegister(
+					      state.mapDwarfRegno(rl.R)));
 		break;
 
 	    case RLoc.Rule.expressionE:

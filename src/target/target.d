@@ -211,6 +211,11 @@ template TargetThreadBase()
 	return state_.getFRs(regs);
     }
 
+    uint mapDwarfRegno(int dwregno)
+    {
+	return state_.mapDwarfRegno(dwregno);
+    }
+
     TargetSize registerWidth(int regno)
     {
 	return state_.registerWidth(regno);
