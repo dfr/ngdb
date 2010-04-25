@@ -317,11 +317,6 @@ class X86State: MachineState
 	    return 4;
 	}
 
-	uint grCount()
-	{
-	    return EFLAGS + 1;
-	}
-
 	MachineState dup()
 	{
 	    X86State newState = new X86State(target_);
@@ -444,6 +439,11 @@ class X86State: MachineState
 	    if (dwregno >= DW_MM0 && dwregno < DW_MM7)
 		return dwregno - DW_MM0 + MM0;
 	    assert(false);
+	}
+
+	uint registerCount()
+	{
+	    return MM7 + 1;
 	}
 
 	TargetSize registerWidth(int regno)
@@ -1230,11 +1230,6 @@ class X86_64State: MachineState
 	    return 7;
 	}
 
-	uint grCount()
-	{
-	    return RIP + 1;
-	}
-
 	MachineState dup()
 	{
 	    X86_64State newState = new X86_64State(target_);
@@ -1349,6 +1344,11 @@ class X86_64State: MachineState
 	uint mapDwarfRegno(int dwregno)
 	{
 	    assert(false);
+	}
+
+	uint registerCount()
+	{
+	    return FSW + 1;
 	}
 
 	TargetSize registerWidth(int regno)

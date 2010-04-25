@@ -163,11 +163,6 @@ class ArmState: MachineState
 	    return 4;
 	}
 
-	uint grCount()
-	{
-	    return ArmReg.GR_COUNT;
-	}
-
 	MachineState dup()
 	{
 	    ArmState newState = new ArmState(target_);
@@ -188,17 +183,14 @@ class ArmState: MachineState
 	{
 	}
 
-	MachineRegister readIntRegister(uint regno)
-	{
-	    if (regno >= ArmReg.GR_COUNT)
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    return cast(MachineRegister) gregs_[regno];
-	}
-
 	uint mapDwarfRegno(int dwregno)
 	{
 	    return dwregno;
+	}
+
+	uint registerCount()
+	{
+	    return ArmReg.GR_COUNT;
 	}
 
 	TargetSize registerWidth(int regno)
@@ -208,6 +200,14 @@ class ArmState: MachineState
 	    else
 		throw new TargetException(
 		    format("Unsupported register index %d", regno));
+	}
+
+	MachineRegister readIntRegister(uint regno)
+	{
+	    if (regno >= ArmReg.GR_COUNT)
+		throw new TargetException(
+		    format("Unsupported register index %d", regno));
+	    return cast(MachineRegister) gregs_[regno];
 	}
 
 	void writeIntRegister(uint regno, MachineRegister val)

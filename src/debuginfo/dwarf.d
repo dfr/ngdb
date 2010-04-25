@@ -3234,8 +3234,8 @@ class FDE
     {
 	FrameState cieFs, fdeFs;
 
-	cieFs.clear(this, state.grCount);
-	fdeFs.clear(this, state.grCount);
+	cieFs.clear(this, state.registerCount);
+	fdeFs.clear(this, state.registerCount);
 
 	auto pc = state.pc;
 	execute(cie.instructionStart, cie.instructionEnd, pc, cieFs, cieFs);
@@ -3252,8 +3252,8 @@ class FDE
     {
 	FrameState cieFs, fdeFs;
 
-	cieFs.clear(this, state.grCount);
-	fdeFs.clear(this, state.grCount);
+	cieFs.clear(this, state.registerCount);
+	fdeFs.clear(this, state.registerCount);
 
 	auto pc = state.pc;
 	execute(cie.instructionStart, cie.instructionEnd, pc, cieFs, cieFs);

@@ -191,11 +191,6 @@ template TargetThreadBase()
 	return state_.spregno;
     }
 
-    uint grCount()
-    {
-	return state_.grCount;
-    }
-
     void dumpFloat()
     {
 	return state_.dumpFloat;
@@ -214,6 +209,11 @@ template TargetThreadBase()
     uint mapDwarfRegno(int dwregno)
     {
 	return state_.mapDwarfRegno(dwregno);
+    }
+
+    uint registerCount()
+    {
+	return state_.registerCount;
     }
 
     TargetSize registerWidth(int regno)
