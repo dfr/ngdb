@@ -103,11 +103,6 @@ class MachineState: Scope
     abstract uint spregno();
 
     /**
-     * Return the number of general registers
-     */
-    abstract uint grCount();
-
-    /**
      * Print a representation of the floating point state.
      */
     abstract void dumpFloat();
@@ -126,6 +121,11 @@ class MachineState: Scope
      * Map a dwarf register number to a MachineState register number.
      */
     abstract uint mapDwarfRegno(int dwregno);
+
+    /**
+     * Return the number of registers
+     */
+    abstract uint registerCount();
 
     /**
      * Return the width of a register in bytes. Register index
