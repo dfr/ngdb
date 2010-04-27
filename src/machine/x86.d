@@ -45,6 +45,175 @@ version (LittleEndian)
 	version = nativeFloat80;
 }
 
+private {
+    template DumpFloat()
+    {
+	void dumpFloat()
+	{
+	    uint control = readIntRegister(FCTRL);
+	    uint status = readIntRegister(FSTAT);
+	    uint tag = readIntRegister(FTAG);
+	    uint top = (status >> 11) & 7;
+	    static string tagNames[] = [
+		"Valid",
+		"Zero",
+		"Special",
+		"Empty"];
+	    static string precisionNames[] = [
+		"Single Precision (24 bits),",
+		"Reserved",
+		"Double Precision (53 bits),",
+		"Double Extended Precision (64 bits),",
+		];
+	    static string roundingNames[] = [
+		"Round to nearest",
+		"Round down",
+		"Roumnd up",
+		"Round toward zero",
+		];
+
+	    /*
+	     * Regenerate the tag word from its abridged version
+	     */
+	    ushort newtag = 0;
+	    for (auto i = 0; i < 8; i++) {
+		if (tag & (1 << i)) {
+		    auto fi = (i - top) & 7;
+		    ubyte[] acc = readRegister(ST0 + fi, TS10);
+		    auto exp = readInteger(acc[8..10]);
+		    auto frac = readInteger(acc[0..8]);
+		    if ((exp & 0x7fff) == 0x7fff)
+			newtag |= 2 << (2*i); // special
+		    else if (exp == 0 && frac == 0)
+			newtag |= 1 << (2*i); // zero
+		    else
+			newtag |= 0 << (2*i); // valid
+		} else {
+		    newtag |= 3 << (2*i);
+		}
+	    }
+	    tag = newtag;
+
+	    for (auto i = 7; i >= 0; i--) {
+		auto fi = (i - top) & 7;
+		ubyte[] acc = readRegister(ST0 + fi, TS10);
+		writef("%sR%d: %-7s 0x%04x%016x ",
+		       i == top ? "=>" : "  ",
+		       i,
+		       tagNames[(tag >> 2*i) & 3],
+		       readInteger(acc[8..10]),
+		       readInteger(acc[0..8]));
+		switch ((tag >> (2*i)) & 3) {
+		case 0:
+		    writefln("%g", readFloat(acc));
+		    break;
+		case 1:
+		    writefln("+0");
+		    break;
+		case 2:
+		    writefln("%g", readFloat(acc));
+		    break;
+		case 3:
+		    writefln("");
+		}
+	    }
+	    writefln("");
+	    writefln("%-22s0x%04x", "Status Word:", status);
+	    writefln("%-22s  TOP: %d", "", top);
+	    writef("%-22s0x%04x   ", "Control Word:", control);
+	    if (control & 1) writef("IM ");
+	    if (control & 2) writef("DM ");
+	    if (control & 4) writef("ZM ");
+	    if (control & 8) writef("OM ");
+	    if (control & 16) writef("UM ");
+	    if (control & 32) writef("PM ");
+	    if (control & (1<<12)) writef("X");
+	    writefln("");
+	    writefln("%-22s  PC: %s", "",
+		     precisionNames[(control >> 8) & 3]);
+	    writefln("%-22s  RC: %s", "",
+		     roundingNames[(control >> 10) & 3]);
+	    writefln("%-22s0x%04x", "Tag Word:", tag);
+	    writefln("%-22s0x%02x:0x%08x", "Instruction Pointer:",
+		     readIntRegister(FISEG),
+		     readIntRegister(FIOFF));
+	    writefln("%-22s0x%02x:0x%08x", "Operand Pointer:",
+		     readIntRegister(FOSEG),
+		     readIntRegister(FOOFF));
+	    writefln("%-22s0x%04x", "Opcode:",
+		     0xd800 + readIntRegister(FOP));
+	}
+    }
+
+    Type xmmType()
+    {
+	static CompoundType ty;
+
+	if (ty)
+	    return ty;
+	
+	auto lang = CLikeLanguage.instance;
+	ty = new CompoundType(lang, "union", "xmmreg_t", TS16);
+
+	void addXmmP(string name, Type fTy)
+	{
+	    auto aTy = new ArrayType(lang, fTy);
+	    aTy.addDim(TS0,
+                       cast(TargetSize) (16 / fTy.byteWidth));
+	    ty.addField(new Variable(name,
+		new Value(new FirstFieldLocation(TS16), aTy)));
+	}
+
+	void addXmmS(string name, Type fTy)
+	{
+	    ty.addField(new Variable(name,
+		new Value(new FirstFieldLocation(fTy.byteWidth), fTy)));
+	}
+
+	addXmmS("ss", lang.floatType("float", TS4));
+	addXmmS("sd", lang.floatType("double", TS8));
+	addXmmP("ps", lang.floatType("float", TS4));
+	addXmmP("pd", lang.floatType("double", TS8));
+	addXmmP("pb", lang.integerType("uint8_t", false, TS1));
+	addXmmP("pw", lang.integerType("uint16_t", false, TS2));
+	addXmmP("pi", lang.integerType("uint32_t", false, TS4));
+	addXmmP("psb", lang.integerType("int8_t", true, TS1));
+	addXmmP("psw", lang.integerType("int16_t", true, TS2));
+	addXmmP("psi", lang.integerType("int32_t", true, TS4));
+
+	return ty;
+    }
+
+    Type mmType()
+    {
+	static CompoundType ty;
+
+	if (ty)
+	    return ty;
+	
+	auto lang = CLikeLanguage.instance;
+	ty = new CompoundType(lang, "union", "mmreg_t", TS8);
+
+	void addMmP(string name, Type fTy)
+	{
+	    auto aTy = new ArrayType(lang, fTy);
+	    aTy.addDim(TS0,
+                       cast(TargetSize) (8 / fTy.byteWidth));
+	    ty.addField(new Variable(name,
+		new Value(new FirstFieldLocation(TS8), aTy)));
+	}
+
+	addMmP("pb", lang.integerType("uint8_t", false, TS1));
+	addMmP("pw", lang.integerType("uint16_t", false, TS2));
+	addMmP("pi", lang.integerType("uint32_t", false, TS4));
+	addMmP("psb", lang.integerType("int8_t", true, TS1));
+	addMmP("psw", lang.integerType("int16_t", true, TS2));
+	addMmP("psi", lang.integerType("int32_t", true, TS4));
+
+	return ty;
+    }
+}
+
 class X86State: MachineState
 {
     /**
@@ -161,60 +330,72 @@ class X86State: MachineState
 	"trapno",
 	];
 
+    mixin MachineRegisters MR;
+    mixin DumpFloat;
+
     this(Target target)
     {
+	initRegisters;
 	target_ = target;
     }
 
     static this()
     {
 	auto lang = CLikeLanguage.instance;
-	grType_ = lang.integerType("uint32_t", false, TS4);
-	frType_ = lang.floatType("real", TS10);
+	Type intType = lang.integerType("uint32_t", false, TS4);
+	Type floatType = lang.floatType("real", TS10);
 
-	void addXmmP(string name, Type ty)
-	{
-	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(TS0,
-                       cast(TargetSize) (16 / ty.byteWidth));
-	    (cast(CompoundType) xmmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(TS16), aTy)));
-	}
 
-	void addXmmS(string name, Type ty)
-	{
-	    (cast(CompoundType) xmmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(ty.byteWidth), ty)));
-	}
-
-	xmmType_ = new CompoundType(lang, "union", "xmmreg_t", TS16);
-	addXmmS("ss", lang.floatType("float", TS4));
-	addXmmS("sd", lang.floatType("double", TS8));
-	addXmmP("ps", lang.floatType("float", TS4));
-	addXmmP("pd", lang.floatType("double", TS8));
-	addXmmP("pb", lang.integerType("uint8_t", false, TS1));
-	addXmmP("pw", lang.integerType("uint16_t", false, TS2));
-	addXmmP("pi", lang.integerType("uint32_t", false, TS4));
-	addXmmP("psb", lang.integerType("int8_t", true, TS1));
-	addXmmP("psw", lang.integerType("int16_t", true, TS2));
-	addXmmP("psi", lang.integerType("int32_t", true, TS4));
-
-	void addMmP(string name, Type ty)
-	{
-	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(TS0,
-                       cast(TargetSize) (8 / ty.byteWidth));
-	    (cast(CompoundType) mmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(TS8), aTy)));
-	}
-
-	mmType_ = new CompoundType(lang, "union", "mmreg_t", TS16);
-	addMmP("pb", lang.integerType("uint8_t", false, TS1));
-	addMmP("pw", lang.integerType("uint16_t", false, TS2));
-	addMmP("pi", lang.integerType("uint32_t", false, TS4));
-	addMmP("psb", lang.integerType("int8_t", true, TS1));
-	addMmP("psw", lang.integerType("int16_t", true, TS2));
-	addMmP("psi", lang.integerType("int32_t", true, TS4));
+	addRegister(intType, "eax");
+	addRegister(intType, "ecx");
+	addRegister(intType, "edx");
+	addRegister(intType, "ebx");
+	addRegister(intType, "esp");
+	addRegister(intType, "ebp");
+	addRegister(intType, "esi");
+	addRegister(intType, "edi");
+	addRegister(intType, "eip");
+	addRegister(intType, "eflags");
+	addRegister(intType, "cs");
+	addRegister(intType, "ss");
+	addRegister(intType, "ds");
+	addRegister(intType, "es");
+	addRegister(intType, "fs");
+	addRegister(intType, "gs");
+	addRegister(floatType, "st0", false);
+	addRegister(floatType, "st1", false);
+	addRegister(floatType, "st2", false);
+	addRegister(floatType, "st3", false);
+	addRegister(floatType, "st4", false);
+	addRegister(floatType, "st5", false);
+	addRegister(floatType, "st6", false);
+	addRegister(floatType, "st7", false);
+	addRegister(intType, "fctrl");
+	addRegister(intType, "fstat");
+	addRegister(intType, "ftag");
+	addRegister(intType, "fiseg");
+	addRegister(intType, "fioff");
+	addRegister(intType, "foseg");
+	addRegister(intType, "fooff");
+	addRegister(intType, "fop");
+	addRegister(xmmType, "xmm0");
+	addRegister(xmmType, "xmm1");
+	addRegister(xmmType, "xmm2");
+	addRegister(xmmType, "xmm3");
+	addRegister(xmmType, "xmm4");
+	addRegister(xmmType, "xmm5");
+	addRegister(xmmType, "xmm6");
+	addRegister(xmmType, "xmm7");
+	addRegister(intType, "mxcsr");
+	addRegisterAlias(intType, "pc", EIP);
+	addRegisterAlias(mmType, "mm0", ST0);
+	addRegisterAlias(mmType, "mm1", ST1);
+	addRegisterAlias(mmType, "mm2", ST2);
+	addRegisterAlias(mmType, "mm3", ST3);
+	addRegisterAlias(mmType, "mm4", ST4);
+	addRegisterAlias(mmType, "mm5", ST5);
+	addRegisterAlias(mmType, "mm6", ST6);
+	addRegisterAlias(mmType, "mm7", ST7);
     }
 
     override {
@@ -226,23 +407,22 @@ class X86State: MachineState
 		if ((i & 3) == 3)
 		    writefln("");
 	    }
-	    writef("%6s:%08x ", "cs", regs_.r_cs);
-	    writefln("%6s:%08x ", "ss", regs_.r_ss);
-	    writef("%6s:%08x ", "ds", regs_.r_ds);
-	    writef("%6s:%08x ", "es", regs_.r_es);
-	    writef("%6s:%08x ", "fs", regs_.r_fs);
-	    writefln("%6s:%08x ", "gs", regs_.r_gs);
+	    writef("%6s:%08x ", "cs", readIntRegister(CS));
+	    writefln("%6s:%08x ", "ss", readIntRegister(SS));
+	    writef("%6s:%08x ", "ds", readIntRegister(DS));
+	    writef("%6s:%08x ", "es", readIntRegister(ES));
+	    writef("%6s:%08x ", "fs", readIntRegister(FS));
+	    writefln("%6s:%08x ", "gs", readIntRegister(GS));
 	}
 
 	TargetAddress pc()
 	{
-	    return cast(TargetAddress) regs_.r_eip;
+	    return cast(TargetAddress) readIntRegister(EIP);
 	}
 
 	void pc(TargetAddress pc)
 	{
-	    regs_.r_eip = pc;
-	    grdirty_ = true;
+	    writeIntRegister(EIP, cast(MachineRegister) pc);
 	}
 
 	TargetAddress tp()
@@ -261,55 +441,77 @@ class X86State: MachineState
 	    return cast(TargetAddress) (base + offset);
 	}
 
-	PtraceCommand[] ptraceReadCommands()
+	void ptraceReadState(Ptrace pt)
 	{
-	    grdirty_ = false;
-	    fpdirty_ = false;
 	    version (FreeBSD) {
-		return [PtraceCommand(PT_GETREGS, cast(ubyte*) &regs_, 0),
-			PtraceCommand(PT_GETXMMREGS, cast(ubyte*) &fpregs_, 0),
-			PtraceCommand(PT_GETGSBASE, cast(ubyte*) &tp_, 0)];
+		ubyte[reg32.sizeof] regs;
+		pt.ptrace(PT_GETREGS, regs.ptr, 0);
+		setGRs(regs.ptr);
+
+		ubyte[xmmreg32.sizeof] fpregs;
+		pt.ptrace(PT_GETXMMREGS, fpregs.ptr, 0);
+		setFRs(fpregs.ptr);
+
+		pt.ptrace(PT_GETGSBASE, cast(ubyte*) &tp_, 0);
 	    }
 	    version (linux) {
-		return [PtraceCommand(PTRACE_GETREGS, null, cast(uint) &regs_)];
+		ubyte[reg32.sizeof] regs;
+		pt.ptrace(PT_GETREGS, regs.ptr, 0);
+		setGRs(regs.ptr);
 	    }
+	    foreach (ref d; dirty_)
+		d = false;
 	}
 
-	PtraceCommand[] ptraceWriteCommands()
+	void ptraceWriteState(Ptrace pt)
 	{
-	    PtraceCommand[] res;
-	    version (FreeBSD) {
-		if (grdirty_) {
-		    res ~= PtraceCommand(PT_SETREGS, cast(ubyte*) &regs_, 0);
-		    grdirty_ = false;
+	    bool grdirty = false;
+	    bool frdirty = false;
+	    foreach (regno, ref d; dirty_) {
+		if (d) {
+		    if (regno < ST0)
+			grdirty = true;
+		    else
+			frdirty = true;
+		    d = false;
 		}
-		if (fpdirty_) {
-		    res ~= PtraceCommand(PT_SETXMMREGS, cast(ubyte*) &fpregs_, 0);
-		    fpdirty_ = false;
+	    }
+	    version (FreeBSD) {
+		if (grdirty) {
+		    ubyte[reg32.sizeof] regs;
+		    getGRs(regs.ptr);
+		    pt.ptrace(PT_SETREGS, regs.ptr, 0);
+		}
+		if (frdirty) {
+		    ubyte[xmmreg32.sizeof] fpregs;
+		    getFRs(fpregs.ptr);
+		    //pt.ptrace(PT_SETXMMREGS, fpregs.ptr, 0);
 		}
 	    }
 	    version (linux) {
-		if (grdirty_) {
-		    res ~= PtraceCommand(PTRACE_SETREGS, null, cast(uint) &regs_);
-		    grdirty_ = false;
+		if (grdirty) {
+		    ubyte[reg32.sizeof] regs;
+		    getGRs(regs.ptr);
+		    pt.ptrace(PT_SETREGS, regs.ptr, 0);
 		}
-		if (fpdirty_) {
-		    //res ~= PtraceCommand(PT_SETXMMREGS, cast(ubyte*) &fpregs_);
-		    fpdirty_ = false;
+		if (frdirty) {
+		    ubyte[xmmreg32.sizeof] fpregs;
+		    getFRs(fpregs.ptr);
+		    pt.ptrace(PT_SETXMMREGS, fpregs.ptr, 0);
 		}
 	    }
-	    return res;
 	}
 
 	void setGRs(ubyte* p)
 	{
-	    regs_ = *cast(reg32*) p;
-	    grdirty_ = true;
+	    foreach (i, off; regmap_)
+		writeRegister(i, p[off..off+4]);
 	}
 
 	void getGRs(ubyte* p)
 	{
-	    *cast(reg32*) p = regs_;
+	    foreach (i, off; regmap_)
+		p[off..off+4] = readRegister(i, TS4);
 	}
 
 	uint spregno()
@@ -320,115 +522,51 @@ class X86State: MachineState
 	MachineState dup()
 	{
 	    X86State newState = new X86State(target_);
-	    newState.regs_ = regs_;
-	    newState.fpregs_ = fpregs_;
+	    newState.bytes_[] = bytes_[];
 	    newState.tp_ = tp_;
 	    return newState;
 	}
 
-	void dumpFloat()
-	{
-	    uint control = fpregs_.xmm_env[0] & 0xffff;
-	    uint status = fpregs_.xmm_env[0] >> 16;
-	    uint tag = fpregs_.xmm_env[1] & 0xffff;
-	    uint top = (status >> 11) & 7;
-	    static string tagNames[] = [
-		"Valid",
-		"Zero",
-		"Special",
-		"Empty"];
-	    static string precisionNames[] = [
-		"Single Precision (24 bits),",
-		"Reserved",
-		"Double Precision (53 bits),",
-		"Double Extended Precision (64 bits),",
-		];
-	    static string roundingNames[] = [
-		"Round to nearest",
-		"Round down",
-		"Roumnd up",
-		"Round toward zero",
-		];
-
-	    /*
-	     * Regenerate the tag word from its abridged version
-	     */
-	    ushort newtag = 0;
-	    for (auto i = 0; i < 8; i++) {
-		if (tag & (1 << i)) {
-		    auto fi = (i - top) & 7;
-		    auto exp = readInteger(fpregs_.xmm_acc[fi][8..10]);
-		    auto frac = readInteger(fpregs_.xmm_acc[fi][0..8]);
-		    if ((exp & 0x7fff) == 0x7fff)
-			newtag |= 2 << (2*i); // special
-		    else if (exp == 0 && frac == 0)
-			newtag |= 1 << (2*i); // zero
-		    else
-			newtag |= 0 << (2*i); // valid
-		} else {
-		    newtag |= 3 << (2*i);
-		}
-	    }
-	    tag = newtag;
-
-	    for (auto i = 7; i >= 0; i--) {
-		auto fi = (i - top) & 7;
-		writef("%sR%d: %-7s 0x%04x%016x ",
-		       i == top ? "=>" : "  ",
-		       i,
-		       tagNames[(tag >> 2*i) & 3],
-		       readInteger(fpregs_.xmm_acc[fi][8..10]),
-		       readInteger(fpregs_.xmm_acc[fi][0..8]));
-		switch ((tag >> (2*i)) & 3) {
-		case 0:
-		    writefln("%g", readFloat(fpregs_.xmm_acc[fi]));
-		    break;
-		case 1:
-		    writefln("+0");
-		    break;
-		case 2:
-		    writefln("%g", readFloat(fpregs_.xmm_acc[fi]));
-		    break;
-		case 3:
-		    writefln("");
-		}
-	    }
-	    writefln("");
-	    writefln("%-22s0x%04x", "Status Word:", status);
-	    writefln("%-22s  TOP: %d", "", top);
-	    writef("%-22s0x%04x   ", "Control Word:", control);
-	    if (control & 1) writef("IM ");
-	    if (control & 2) writef("DM ");
-	    if (control & 4) writef("ZM ");
-	    if (control & 8) writef("OM ");
-	    if (control & 16) writef("UM ");
-	    if (control & 32) writef("PM ");
-	    if (control & (1<<12)) writef("X");
-	    writefln("");
-	    writefln("%-22s  PC: %s", "",
-		     precisionNames[(control >> 8) & 3]);
-	    writefln("%-22s  RC: %s", "",
-		     roundingNames[(control >> 10) & 3]);
-	    writefln("%-22s0x%04x", "Tag Word:", tag);
-	    writefln("%-22s0x%02x:0x%08x", "Instruction Pointer:",
-		   fpregs_.xmm_env[3] & 0xffff, fpregs_.xmm_env[2]);
-	    writefln("%-22s0x%02x:0x%08x", "Operand Pointer:",
-		   fpregs_.xmm_env[5] & 0xffff, fpregs_.xmm_env[4]);
-	    writefln("%-22s0x%04x", "Opcode:",
-		     0xd800 + (fpregs_.xmm_env[1] >> 16));
-	}
-
 	void setFRs(ubyte* regs)
 	{
-	    fpregs_ = *cast(xmmreg32*) regs;
+	    xmmreg32* f = cast(xmmreg32*) regs;
+	    
+	    writeIntRegister(FCTRL, f.xmm_env[0] & 0xffff);
+	    writeIntRegister(FSTAT, f.xmm_env[0] >> 16);
+	    writeIntRegister(FTAG, f.xmm_env[1] & 0xffff);
+	    writeIntRegister(FOP, (f.xmm_env[1] >> 16) & 0x7ff);
+	    writeIntRegister(FIOFF, f.xmm_env[2]);
+	    writeIntRegister(FISEG, f.xmm_env[3] & 0xffff);
+	    writeIntRegister(FOOFF, f.xmm_env[4]);
+	    writeIntRegister(FOSEG, f.xmm_env[5] & 0xffff);
+	    writeIntRegister(MXCSR, f.xmm_env[6]);
+
+	    for (uint i = 0; i < 8; i++) {
+		writeRegister(ST0 + i, f.xmm_acc[i][0..10]);
+		writeRegister(XMM0 + i, f.xmm_reg[i][0..16]);
+	    }
 	}
 
 	void getFRs(ubyte* regs)
 	{
-	    *cast(xmmreg32*) regs = fpregs_;
+	    xmmreg32* f = cast(xmmreg32*) regs;
+
+	    f.xmm_env[0] = readIntRegister(FCTRL)
+		+ (readIntRegister(FSTAT) << 16);
+	    f.xmm_env[1] = readIntRegister(FTAG)
+		+ ((readIntRegister(FOP) & 0x7ff) << 16);
+	    f.xmm_env[2] = readIntRegister(FIOFF);
+	    f.xmm_env[3] = readIntRegister(FISEG);
+	    f.xmm_env[4] = readIntRegister(FOOFF);
+	    f.xmm_env[5] = readIntRegister(FOSEG);
+	    f.xmm_env[6] = readIntRegister(MXCSR);
+	    for (uint i = 0; i < 8; i++) {
+		f.xmm_acc[i][0..10] = readRegister(ST0 + i, TS10);
+		f.xmm_reg[i][0..16] = readRegister(XMM0 + i, TS16);
+	    }
 	}
 
-	uint mapDwarfRegno(int dwregno)
+	uint mapDwarfRegno(uint dwregno)
 	{
 	    if (dwregno <= DW_EFLAGS)
 		return dwregno;
@@ -441,118 +579,6 @@ class X86State: MachineState
 	    assert(false);
 	}
 
-	uint registerCount()
-	{
-	    return MM7 + 1;
-	}
-
-	TargetSize registerWidth(int regno)
-	{
-	    if (regno <= GS)
-		return TS4;
-	    else if (regno >= ST0 && regno <= ST7)
-		return TS10;
-	    else if (regno >= FCTRL && regno <= FOP)
-		return TS4;
-	    else if (regno >= XMM0 && regno <= XMM7)
-		return TS16;
-	    else if (regno == MXCSR)
-		return TS4;
-	    else if (regno >= MM0 && regno <= MM7)
-		return TS8;
-	    else
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	}
-
-	MachineRegister readIntRegister(uint regno)
-	{
-	    return cast(MachineRegister) *grAddr(regno);
-	}
-
-	void writeIntRegister(uint regno, MachineRegister value)
-	{
-	    *grAddr(regno) = value;
-	    grdirty_ = true;
-	}
-
-	ubyte[] readRegister(uint regno, TargetSize bytes)
-	{
-	    ubyte[] v;
-	    if (regno <= GS) {
-		assert(bytes <= 4);
-		v.length = bytes;
-		v[] = (cast(ubyte*) grAddr(regno))[0..bytes];
-	    } else if (regno >= ST0 && regno <= ST7) {
-		ubyte* reg = fpregs_.xmm_acc[regno-ST0].ptr;
-		assert(bytes <= 10);
-		v.length = bytes;
-		switch (v.length) {
-		case 4:
-		case 8:
-		    auto f = readFloat(reg[0..10]);
-		    writeFloat(f, v);
-		    break;
-		default:
-		    v[] = reg[0..bytes];
-		}
-	    } else if (regno >= XMM0 && regno <= XMM7) {
-		assert(bytes <= 16);
-		v.length = bytes;
-		v[] = (cast(ubyte*) &fpregs_.xmm_reg[regno-XMM0])
-		    [0..bytes];
-	    } else if (regno == MXCSR) {
-		assert(bytes <= 4);
-		v.length = bytes;
-		v[] = (cast(ubyte*) &fpregs_.xmm_env[6])[0..bytes];
-	    } else if (regno >= MM0 && regno <= MM7) {
-		assert(bytes <= 8);
-		v.length = bytes;
-		v[] = (cast(ubyte*) &fpregs_.xmm_acc[regno-MM0])
-		    [0..bytes];
-	    } else {
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    }
-	    return v;
-	}
-
-	void writeRegister(uint regno, ubyte[] v)
-	{
-	    if (regno <= GS) {
-		assert(v.length <= 4);
-		(cast(ubyte*) grAddr(regno))[0..v.length] = v[];
-		grdirty_ = true;
-	    } else if (regno >= ST0 && regno <= ST7) {
-		ubyte* reg = fpregs_.xmm_acc[regno-ST0].ptr;
-		assert(v.length <= 10);
-		switch (v.length) {
-		case 4:
-		case 8:
-		    auto f = readFloat(v);
-		    writeFloat(f, reg[0..10]);
-		    break;
-		default:
-		    reg[0..v.length] = v[];
-		}
-		fpdirty_ = true;
-	    } else if (regno >= XMM0 && regno <= XMM7) {
-		assert(v.length <= 16);
-		(cast(ubyte*) &fpregs_.xmm_reg[regno-XMM0])[0..v.length] = v[];
-		fpdirty_ = true;
-	    } else if (regno == MXCSR) {
-		assert(v.length <= 4);
-		(cast(ubyte*) &fpregs_.xmm_env[6])[0..v.length] = v[];
-	    } else if (regno >= MM0 && regno <= MM7) {
-		assert(v.length <= 8);
-		(cast(ubyte*) &fpregs_.xmm_acc[regno-MM0])[0..v.length] = v[];
-		fpdirty_ = true;
-	    } else if (regno > MM7) {
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    }
-	}
-
 	ubyte[] breakpoint()
 	{
 	    static ubyte[] inst = [ 0xcc ];
@@ -561,8 +587,7 @@ class X86State: MachineState
 
 	void adjustPcAfterBreak()
 	{
-	    regs_.r_eip--;
-	    grdirty_ = true;
+	    writeIntRegister(EIP, readIntRegister(EIP) - 1);
 	}
 
 	TargetSize pointerWidth()
@@ -668,8 +693,7 @@ class X86State: MachineState
 	Value call(TargetAddress address, Type returnType, Value[] args)
 	{
 	    X86State saveState = new X86State(target_);
-	    saveState.regs_ = regs_;
-	    saveState.fpregs_ = fpregs_;
+	    saveState.bytes_[] = bytes_[];
 
 	    /*
 	     * If the return value is a structure, reserve some space
@@ -682,10 +706,13 @@ class X86State: MachineState
 	    version (linux)
 		auto regStructSize = 0;
 	    if (cTy && cTy.byteWidth > regStructSize) {
-		regs_.r_esp -= cTy.byteWidth;
+		MachineRegister esp = readIntRegister(ESP);
+		esp -= cTy.byteWidth;
+		writeIntRegister(ESP, esp);
 		ubyte[4] v;
-		writeInteger(regs_.r_esp, v);
-		args = new Value(new ConstantLocation(v), grType_) ~ args;
+		writeInteger(esp, v);
+		args = new Value(new ConstantLocation(v),
+				 registerType(EAX)) ~ args;
 	    }
 
 	    ubyte[] argval;
@@ -712,9 +739,10 @@ class X86State: MachineState
 	     * ebp will be aligned to a 16-byte boundard after the
 	     * called function executes its prologue.
 	     */
-	    auto newFrame = regs_.r_esp - (argval.length + 8);
+	    MachineRegister esp = readIntRegister(ESP);
+	    auto newFrame = esp - (argval.length + 8);
 	    newFrame &= ~15;
-	    regs_.r_esp = newFrame + 4;
+	    writeIntRegister(ESP, newFrame + 4);
 
 	    /*
 	     * Put arguments on the stack. Possibly we should keep the
@@ -747,8 +775,7 @@ class X86State: MachineState
 	    /*
 	     * Set the thing running at the start of the function.
 	     */
-	    regs_.r_eip = address;
-	    grdirty_ = true;
+	    writeIntRegister(EIP, cast(MachineRegister) address);
 	    target_.cont(0);
 	    target_.wait;
 
@@ -765,17 +792,15 @@ class X86State: MachineState
 	    try {
 		retval = returnValue(returnType);
 	    } catch (EvalException e) {
-		regs_ = saveState.regs_;
-		fpregs_ = saveState.fpregs_;
-		grdirty_ = true;
-		fpdirty_= true;
+		bytes_[] = saveState.bytes_[];
+		foreach (ref d; dirty_)
+		    d = false;
 		throw e;
 	    }
 
-	    regs_ = saveState.regs_;
-	    fpregs_ = saveState.fpregs_;
-	    grdirty_ = true;
-	    fpdirty_= true;
+	    bytes_[] = saveState.bytes_[];
+	    foreach (ref d; dirty_)
+		d = false;
 
 	    return retval;
 	}
@@ -789,7 +814,8 @@ class X86State: MachineState
 	    version (linux)
 		auto regStructSize = 0;
 	    if (cTy && cTy.byteWidth > regStructSize) {
-		retval = readMemory(cast(TargetAddress) regs_.r_eax,
+		auto eax = readIntRegister(EAX);
+		retval = readMemory(cast(TargetAddress) eax,
                                     cTy.byteWidth);
 	    } else if (returnType.isNumericType && !returnType.isIntegerType) {
 		retval = readRegister(ST0, returnType.byteWidth);
@@ -853,78 +879,9 @@ class X86State: MachineState
 	    dis.setOption("intel");
 	    return dis.disassemble(address, &readByte, lookupAddress);
 	}
-
-	string[] contents(MachineState)
-	{
-	    string[] res;
-	    res = RegNames[];
-	    for (auto i = 0; i < 8; i++)
-		res ~= format("st%d", i);
-	    for (auto i = 0; i < 8; i++)
-		res ~= format("mm%d", i);
-	    for (auto i = 0; i < 8; i++)
-		res ~= format("xmm%d", i);
-	    return res;
-	}
-
-	bool lookup(string reg, MachineState, out DebugItem val)
-	{
-	    if (reg.length > 0 && reg[0] == '$')
-		reg = reg[1..$];
-	    if (reg == "pc") reg = "eip";
-	    foreach (i, s; RegNames) {
-		if (s == reg) {
-		    val = regAsValue(i, grType_);
-		    return true;
-		}
-	    }
-	    if (reg.length == 3 && reg[0..2] == "st"
-		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(ST0 + reg[2] - '0', frType_);
-		return true;
-	    }
-	    if (reg.length == 4 && reg[0..3] == "xmm"
-		&& reg[3] >= '0' && reg[3] <= '7') {
-		val = regAsValue(XMM0 + reg[3] - '0', xmmType_);
-		return true;
-	    }
-	    if (reg.length == 3 && reg[0..2] == "mm"
-		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(MM0 + reg[2] - '0', mmType_);
-		return true;
-	    }
-		
-	    return false;
-	}
-	bool lookupStruct(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupUnion(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupTypedef(string reg, out Type)
-	{
-	    return false;
-	}
-    }
-
-    Value regAsValue(uint i, Type ty)
-    {
-	auto loc = new RegisterLocation(i, registerWidth(i));
-	return new Value(loc, ty);
     }
 
 private:
-    uint32_t* grAddr(uint regno)
-    {
-	if (regno > GS || regmap_[regno] == ~0)
-	    throw new TargetException(
-		format("Unsupported register index %d", regno));
-	return cast(uint32_t*) (cast(ubyte*) &regs_ + regmap_[regno]);
-    }
-
     union float32 {
 	uint i;
 	float f;
@@ -969,91 +926,151 @@ private:
 	    ];
     }
     Target	target_;
-    bool	grdirty_;
     uint32_t	tp_;
-    reg32	regs_;
-    xmmreg32	fpregs_;
-    bool	fpdirty_;
-
-    static Type	grType_;
-    static Type	frType_;
-    static Type	xmmType_;
-    static Type	mmType_;
 }
 
 class X86_64State: MachineState
 {
     enum
     {
-	RAX	= 0,
-	RDX	= 1,
-	RCX	= 2,
-	RBX	= 3,
-	RSI	= 4,
-	RDI	= 5,
-	RBP	= 6,
-	RSP	= 7,
-	R8	= 8,
-	R9	= 9,
-	R10	= 10,
-	R11	= 11,
-	R12	= 12,
-	R13	= 13,
-	R14	= 14,
-	R15	= 15,
-	RIP	= 16,
+	DW_RAX	= 0,
+	DW_RDX	= 1,
+	DW_RCX	= 2,
+	DW_RBX	= 3,
+	DW_RSI	= 4,
+	DW_RDI	= 5,
+	DW_RBP	= 6,
+	DW_RSP	= 7,
+	DW_R8	= 8,
+	DW_R9	= 9,
+	DW_R10	= 10,
+	DW_R11	= 11,
+	DW_R12	= 12,
+	DW_R13	= 13,
+	DW_R14	= 14,
+	DW_R15	= 15,
+	DW_RIP	= 16,
 
-	XMM0	= 17,
-	XMM1	= 18,
-	XMM2	= 19,
-	XMM3	= 20,
-	XMM4	= 21,
-	XMM5	= 22,
-	XMM6	= 23,
-	XMM7	= 24,
-	XMM8	= 25,
-	XMM9	= 26,
-	XMM10	= 27,
-	XMM11	= 28,
-	XMM12	= 29,
-	XMM13	= 30,
-	XMM14	= 31,
-	XMM15	= 32,
+	DW_XMM0	= 17,
+	DW_XMM1	= 18,
+	DW_XMM2	= 19,
+	DW_XMM3	= 20,
+	DW_XMM4	= 21,
+	DW_XMM5	= 22,
+	DW_XMM6	= 23,
+	DW_XMM7	= 24,
+	DW_XMM8	= 25,
+	DW_XMM9	= 26,
+	DW_XMM10 = 27,
+	DW_XMM11 = 28,
+	DW_XMM12 = 29,
+	DW_XMM13 = 30,
+	DW_XMM14 = 31,
+	DW_XMM15 = 32,
 
-	ST0	= 33,
-	ST1	= 34,
-	ST2	= 35,
-	ST3	= 36,
-	ST4	= 37,
-	ST5	= 38,
-	ST6	= 39,
-	ST7	= 40,
+	DW_ST0	= 33,
+	DW_ST1	= 34,
+	DW_ST2	= 35,
+	DW_ST3	= 36,
+	DW_ST4	= 37,
+	DW_ST5	= 38,
+	DW_ST6	= 39,
+	DW_ST7	= 40,
 
-	MM0	= 41,
-	MM1	= 42,
-	MM2	= 43,
-	MM3	= 44,
-	MM4	= 45,
-	MM5	= 46,
-	MM6	= 47,
-	MM7	= 48,
+	DW_MM0	= 41,
+	DW_MM1	= 42,
+	DW_MM2	= 43,
+	DW_MM3	= 44,
+	DW_MM4	= 45,
+	DW_MM5	= 46,
+	DW_MM6	= 47,
+	DW_MM7	= 48,
 
-	RFLAGS	= 49,
-	CS	= 50,
-	SS	= 51,
-	DS	= 52,
-	ES	= 53,
-	FS	= 54,
-	GS	= 55,
+	DW_RFLAGS = 49,
+	DW_CS	= 50,
+	DW_SS	= 51,
+	DW_DS	= 52,
+	DW_ES	= 53,
+	DW_FS	= 54,
+	DW_GS	= 55,
 
-	FSBASE	= 58,
-	GSBASE	= 59,
+	DW_FSBASE = 58,
+	DW_GSBASE = 59,
 
-	TR	= 62,
-	LDTR	= 63,
-	MXCSR	= 64,
-	FCW	= 65,
-	FSW	= 66,
+	DW_TR	= 62,
+	DW_LDTR	= 63,
+	DW_MXCSR = 64,
+	DW_FCW	= 65,
+	DW_FSW	= 66,
+    }
+
+    enum
+    {
+	RAX,
+	RDX,
+	RCX,
+	RBX,
+	RSI,
+	RDI,
+	RBP,
+	RSP,
+	R8,
+	R9,
+	R10,
+	R11,
+	R12,
+	R13,
+	R14,
+	R15,
+	RIP,
+	EFLAGS,
+	CS,
+	SS,
+	DS,
+	ES,
+	FS,
+	GS,
+	ST0,
+	ST1,
+	ST2,
+	ST3,
+	ST4,
+	ST5,
+	ST6,
+	ST7,
+	FCTRL,
+	FSTAT,
+	FTAG,
+	FISEG,
+	FIOFF,
+	FOSEG,
+	FOOFF,
+	FOP,
+	XMM0,
+	XMM1,
+	XMM2,
+	XMM3,
+	XMM4,
+	XMM5,
+	XMM6,
+	XMM7,
+	XMM8,
+	XMM9,
+	XMM10,
+	XMM11,
+	XMM12,
+	XMM13,
+	XMM14,
+	XMM15,
+	MXCSR,
+	MM0,
+	MM1,
+	MM2,
+	MM3,
+	MM4,
+	MM5,
+	MM6,
+	MM7,
     }
 
     static  string[] RegNames = [
@@ -1076,61 +1093,88 @@ class X86_64State: MachineState
 	"rip",
 	];
 
+    mixin MachineRegisters MR;
+    mixin DumpFloat;
+
     this(Target target)
     {
+	initRegisters;
 	target_ = target;
     }
 
     static this()
     {
 	auto lang = CLikeLanguage.instance;
-	grType_ = lang.integerType("uint64_t", false, TS8);
-	frType_ = lang.floatType("real", TS10);
+	Type int4Type = lang.integerType("uint32_t", false, TS4);
+	Type int8Type = lang.integerType("uint64_t", false, TS8);
+	Type floatType = lang.floatType("real", TS10);
 
-	void addXmmP(string name, Type ty)
-	{
-	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(TS0,
-                       cast(TargetSize) (16 / ty.byteWidth));
-	    (cast(CompoundType) xmmType_).addField(
-                new Variable(name, new Value(new FirstFieldLocation(
-                                                 TS16), aTy)));
-	}
-
-	void addXmmS(string name, Type ty)
-	{
-	    (cast(CompoundType) xmmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(ty.byteWidth), ty)));
-	}
-
-	xmmType_ = new CompoundType(lang, "union", "xmmreg_t", TS16);
-	addXmmS("ss", lang.floatType("float", TS4));
-	addXmmS("sd", lang.floatType("double", TS8));
-	addXmmP("ps", lang.floatType("float", TS4));
-	addXmmP("pd", lang.floatType("double", TS8));
-	addXmmP("pb", lang.integerType("uint8_t", false, TS1));
-	addXmmP("pw", lang.integerType("uint16_t", false, TS2));
-	addXmmP("pi", lang.integerType("uint32_t", false, TS4));
-	addXmmP("psb", lang.integerType("int8_t", true, TS1));
-	addXmmP("psw", lang.integerType("int16_t", true, TS2));
-	addXmmP("psi", lang.integerType("int32_t", true, TS4));
-
-	void addMmP(string name, Type ty)
-	{
-	    auto aTy = new ArrayType(lang, ty);
-	    aTy.addDim(TS0,
-                       cast(TargetSize) (8 / ty.byteWidth));
-	    (cast(CompoundType) mmType_).addField(new Variable(name,
-		new Value(new FirstFieldLocation(TS8), aTy)));
-	}
-
-	mmType_ = new CompoundType(lang, "union", "mmreg_t", TS16);
-	addMmP("pb", lang.integerType("uint8_t", false, TS1));
-	addMmP("pw", lang.integerType("uint16_t", false, TS2));
-	addMmP("pi", lang.integerType("uint32_t", false, TS4));
-	addMmP("psb", lang.integerType("int8_t", true, TS1));
-	addMmP("psw", lang.integerType("int16_t", true, TS2));
-	addMmP("psi", lang.integerType("int32_t", true, TS4));
+	addRegister(int8Type, "rax");
+	addRegister(int8Type, "rbx");
+	addRegister(int8Type, "rcx");
+	addRegister(int8Type, "rdx");
+	addRegister(int8Type, "rsi");
+	addRegister(int8Type, "rdi");
+	addRegister(int8Type, "rbp");
+	addRegister(int8Type, "rsp");
+	addRegister(int8Type, "r8");
+	addRegister(int8Type, "r9");
+	addRegister(int8Type, "r10");
+	addRegister(int8Type, "r11");
+	addRegister(int8Type, "r12");
+	addRegister(int8Type, "r13");
+	addRegister(int8Type, "r14");
+	addRegister(int8Type, "r15");
+	addRegister(int8Type, "rip");
+	addRegister(int4Type, "eflags");
+	addRegister(int4Type, "cs");
+	addRegister(int4Type, "ss");
+	addRegister(int4Type, "ds");
+	addRegister(int4Type, "es");
+	addRegister(int4Type, "fs");
+	addRegister(int4Type, "gs");
+	addRegister(floatType, "st0", false);
+	addRegister(floatType, "st1", false);
+	addRegister(floatType, "st2", false);
+	addRegister(floatType, "st3", false);
+	addRegister(floatType, "st4", false);
+	addRegister(floatType, "st5", false);
+	addRegister(floatType, "st6", false);
+	addRegister(floatType, "st7", false);
+	addRegister(int4Type, "fctrl");
+	addRegister(int4Type, "fstat");
+	addRegister(int4Type, "ftag");
+	addRegister(int4Type, "fiseg");
+	addRegister(int4Type, "fioff");
+	addRegister(int4Type, "foseg");
+	addRegister(int4Type, "fooff");
+	addRegister(int4Type, "fop");
+	addRegister(xmmType, "xmm0");
+	addRegister(xmmType, "xmm1");
+	addRegister(xmmType, "xmm2");
+	addRegister(xmmType, "xmm3");
+	addRegister(xmmType, "xmm4");
+	addRegister(xmmType, "xmm5");
+	addRegister(xmmType, "xmm6");
+	addRegister(xmmType, "xmm7");
+	addRegister(xmmType, "xmm8");
+	addRegister(xmmType, "xmm9");
+	addRegister(xmmType, "xmm10");
+	addRegister(xmmType, "xmm11");
+	addRegister(xmmType, "xmm12");
+	addRegister(xmmType, "xmm13");
+	addRegister(xmmType, "xmm14");
+	addRegister(xmmType, "xmm15");
+	addRegister(int4Type, "mxcsr");
+	addRegisterAlias(int8Type, "pc", RIP);
+	addRegisterAlias(mmType, "mm0", ST0);
+	addRegisterAlias(mmType, "mm1", ST1);
+	addRegisterAlias(mmType, "mm2", ST2);
+	addRegisterAlias(mmType, "mm3", ST3);
+	addRegisterAlias(mmType, "mm4", ST4);
+	addRegisterAlias(mmType, "mm5", ST5);
+	addRegisterAlias(mmType, "mm6", ST6);
+	addRegisterAlias(mmType, "mm7", ST7);
     }
 
     override {
@@ -1142,21 +1186,24 @@ class X86_64State: MachineState
 		if ((i & 1) == 1)
 		    writefln("");
 	    }
-	    writefln("%6s:%016x ", "rflags", regs_.r_rflags);
+	    writefln("%6s:%016x ", "rflags", readIntRegister(EFLAGS));
 	    writefln("    cs:%04x ss:%04x ds:%04x es:%04x gs:%04x fs:%04x",
-		   regs_.r_cs, regs_.r_ss, regs_.r_ds,
-		   regs_.r_es, regs_.r_fs, regs_.r_gs);
+		     readIntRegister(CS),
+		     readIntRegister(SS),
+		     readIntRegister(DS),
+		     readIntRegister(ES),
+		     readIntRegister(FS),
+		     readIntRegister(GS));
 	}
 
 	TargetAddress pc()
 	{
-	    return cast(TargetAddress) regs_.r_rip;
+	    return cast(TargetAddress) readIntRegister(RIP);
 	}
 
 	void pc(TargetAddress pc)
 	{
-	    regs_.r_rip = pc;
-	    grdirty_ = true;
+	    writeIntRegister(RIP, pc);
 	}
 
 	TargetAddress tp()
@@ -1175,54 +1222,77 @@ class X86_64State: MachineState
 	    return cast(TargetAddress) (base + offset);
 	}
 
-	PtraceCommand[] ptraceReadCommands()
+	void ptraceReadState(Ptrace pt)
 	{
-	    grdirty_ = false;
-	    fpdirty_ = false;
 	    version (FreeBSD) {
-		return [PtraceCommand(PT_GETREGS, cast(ubyte*) &regs_, 0),
-			PtraceCommand(PT_GETFPREGS, cast(ubyte*) &fpregs_, 0)];
+		ubyte[reg64.sizeof] regs;
+		pt.ptrace(PT_GETREGS, regs.ptr, 0);
+		setGRs(regs.ptr);
+
+		ubyte[xmmreg64.sizeof] fpregs;
+		pt.ptrace(PT_GETFPREGS, fpregs.ptr, 0);
+		setFRs(fpregs.ptr);
+
+		pt.ptrace(PT_GETGSBASE, cast(ubyte*) &tp_, 0);
 	    }
 	    version (linux) {
-		return [PtraceCommand(PTRACE_GETREGS, null, cast(uint) &regs_)];
+		ubyte[reg64.sizeof] regs;
+		pt.ptrace(PT_GETREGS, regs.ptr, 0);
+		setGRs(regs.ptr);
 	    }
+	    foreach (ref d; dirty_)
+		d = false;
 	}
 
-	PtraceCommand[] ptraceWriteCommands()
+	void ptraceWriteState(Ptrace pt)
 	{
-	    PtraceCommand[] res;
-	    version (FreeBSD) {
-		if (grdirty_) {
-		    res ~= PtraceCommand(PT_SETREGS, cast(ubyte*) &regs_, 0);
-		    grdirty_ = false;
+	    bool grdirty = false;
+	    bool frdirty = false;
+	    foreach (regno, ref d; dirty_) {
+		if (d) {
+		    if (regno < ST0)
+			grdirty = true;
+		    else
+			frdirty = true;
+		    d = false;
 		}
-		if (fpdirty_) {
-		    res ~= PtraceCommand(PT_SETFPREGS, cast(ubyte*) &fpregs_, 0);
-		    fpdirty_ = false;
+	    }
+	    version (FreeBSD) {
+		if (grdirty) {
+		    ubyte[reg64.sizeof] regs;
+		    getGRs(regs.ptr);
+		    pt.ptrace(PT_SETREGS, regs.ptr, 0);
+		}
+		if (frdirty) {
+		    ubyte[xmmreg64.sizeof] fpregs;
+		    getFRs(fpregs.ptr);
+		    pt.ptrace(PT_SETFPREGS, fpregs.ptr, 0);
 		}
 	    }
 	    version (linux) {
-		if (grdirty_) {
-		    res ~= PtraceCommand(PTRACE_SETREGS, null, cast(uint) &regs_);
-		    grdirty_ = false;
+		if (grdirty) {
+		    ubyte[reg64.sizeof] regs;
+		    getGRs(regs.ptr);
+		    pt.ptrace(PT_SETREGS, regs.ptr, 0);
 		}
-		if (fpdirty_) {
-		    //res ~= PtraceCommand(PT_SETXMMREGS, cast(ubyte*) &fpregs_);
-		    fpdirty_ = false;
+		if (frdirty) {
+		    ubyte[xmmreg64.sizeof] fpregs;
+		    getFRs(fpregs.ptr);
+		    //pt.ptrace(PT_SETXMMREGS, fpregs.ptr, 0);
 		}
 	    }
-	    return res;
 	}
 
 	void setGRs(ubyte* p)
 	{
-	    regs_ = *cast(reg64*) p;
-	    grdirty_ = true;
+	    foreach (i, off; regmap_)
+		writeRegister(i, p[off..off+8]);
 	}
 
 	void getGRs(ubyte* p)
 	{
-	    *cast(reg64*) p = regs_;
+	    foreach (i, off; regmap_)
+		p[off..off+8] = readRegister(i, TS8);
 	}
 
 	uint spregno()
@@ -1233,222 +1303,53 @@ class X86_64State: MachineState
 	MachineState dup()
 	{
 	    X86_64State newState = new X86_64State(target_);
-	    newState.regs_ = regs_;
-	    newState.fpregs_ = fpregs_;
+	    newState.bytes_[] = bytes_[];
 	    newState.tp_ = tp_;
 	    return newState;
 	}
 
-	void dumpFloat()
-	{
-	    uint control = fpregs_.xmm_env[0] & 0xffff;
-	    uint status = fpregs_.xmm_env[0] >> 16;
-	    uint tag = fpregs_.xmm_env[1] & 0xffff;
-	    uint top = (status >> 11) & 7;
-	    static string tagNames[] = [
-		"Valid",
-		"Zero",
-		"Special",
-		"Empty"];
-	    static string precisionNames[] = [
-		"Single Precision (24 bits),",
-		"Reserved",
-		"Double Precision (53 bits),",
-		"Double Extended Precision (64 bits),",
-		];
-	    static string roundingNames[] = [
-		"Round to nearest",
-		"Round down",
-		"Roumnd up",
-		"Round toward zero",
-		];
-
-	    /*
-	     * Regenerate the tag word from its abridged version
-	     */
-	    ushort newtag = 0;
-	    for (auto i = 0; i < 8; i++) {
-		if (tag & (1 << i)) {
-		    auto fi = (i - top) & 7;
-		    auto exp = readInteger(fpregs_.xmm_acc[fi][8..10]);
-		    auto frac = readInteger(fpregs_.xmm_acc[fi][0..8]);
-		    if ((exp & 0x7fff) == 0x7fff)
-			newtag |= 2 << (2*i); // special
-		    else if (exp == 0 && frac == 0)
-			newtag |= 1 << (2*i); // zero
-		    else
-			newtag |= 0 << (2*i); // valid
-		} else {
-		    newtag |= 3 << (2*i);
-		}
-	    }
-	    tag = newtag;
-
-	    for (auto i = 7; i >= 0; i--) {
-		auto fi = (i - top) & 7;
-		writef("%sR%d: %-7s 0x%04x%016x ",
-		       i == top ? "=>" : "  ",
-		       i,
-		       tagNames[(tag >> 2*i) & 3],
-		       readInteger(fpregs_.xmm_acc[fi][8..10]),
-		       readInteger(fpregs_.xmm_acc[fi][0..8]));
-		switch ((tag >> (2*i)) & 3) {
-		case 0:
-		    writefln("%g", readFloat(fpregs_.xmm_acc[fi]));
-		    break;
-		case 1:
-		    writefln("+0");
-		    break;
-		case 2:
-		    writefln("%g", readFloat(fpregs_.xmm_acc[fi]));
-		    break;
-		case 3:
-		    writefln("");
-		}
-	    }
-	    writefln("");
-	    writefln("%-22s0x%04x", "Status Word:", status);
-	    writefln("%-22s  TOP: %d", "", top);
-	    writef("%-22s0x%04x   ", "Control Word:", control);
-	    if (control & 1) writef("IM ");
-	    if (control & 2) writef("DM ");
-	    if (control & 4) writef("ZM ");
-	    if (control & 8) writef("OM ");
-	    if (control & 16) writef("UM ");
-	    if (control & 32) writef("PM ");
-	    if (control & (1<<12)) writef("X");
-	    writefln("");
-	    writefln("%-22s  PC: %s", "",
-		     precisionNames[(control >> 8) & 3]);
-	    writefln("%-22s  RC: %s", "",
-		     roundingNames[(control >> 10) & 3]);
-	    writefln("%-22s0x%04x", "Tag Word:", tag);
-	    writefln("%-22s0x%02x:0x%08x", "Instruction Pointer:",
-		   fpregs_.xmm_env[3] & 0xffff, fpregs_.xmm_env[2]);
-	    writefln("%-22s0x%02x:0x%08x", "Operand Pointer:",
-		   fpregs_.xmm_env[5] & 0xffff, fpregs_.xmm_env[4]);
-	    writefln("%-22s0x%04x", "Opcode:",
-		     0xd800 + (fpregs_.xmm_env[1] >> 16));
-	}
-
 	void setFRs(ubyte* regs)
 	{
-	    fpregs_ = *cast(xmmreg64*) regs;
+	    xmmreg64* f = cast(xmmreg64*) regs;
+	    
+	    writeIntRegister(FCTRL, f.xmm_env[0] & 0xffff);
+	    writeIntRegister(FSTAT, f.xmm_env[0] >> 16);
+	    writeIntRegister(FTAG, f.xmm_env[1] & 0xffff);
+	    writeIntRegister(FOP, (f.xmm_env[1] >> 16) & 0x7ff);
+	    writeIntRegister(FIOFF, f.xmm_env[2]);
+	    writeIntRegister(FISEG, f.xmm_env[3] & 0xffff);
+	    writeIntRegister(FOOFF, f.xmm_env[4]);
+	    writeIntRegister(FOSEG, f.xmm_env[5] & 0xffff);
+	    writeIntRegister(MXCSR, f.xmm_env[6]);
+
+	    for (uint i = 0; i < 8; i++)
+		writeRegister(ST0 + i, f.xmm_acc[i][0..10]);
+	    for (uint i = 0; i < 16; i++)
+		writeRegister(XMM0 + i, f.xmm_reg[i][0..16]);
 	}
 
 	void getFRs(ubyte* regs)
 	{
-	    *cast(xmmreg64*) regs = fpregs_;
+	    xmmreg64* f = cast(xmmreg64*) regs;
+
+	    f.xmm_env[0] = readIntRegister(FCTRL)
+		+ (readIntRegister(FSTAT) << 16);
+	    f.xmm_env[1] = readIntRegister(FTAG)
+		+ ((readIntRegister(FOP) & 0x7ff) << 16);
+	    f.xmm_env[2] = readIntRegister(FIOFF);
+	    f.xmm_env[3] = readIntRegister(FISEG);
+	    f.xmm_env[4] = readIntRegister(FOOFF);
+	    f.xmm_env[5] = readIntRegister(FOSEG);
+	    f.xmm_env[6] = readIntRegister(MXCSR);
+	    for (uint i = 0; i < 8; i++)
+		f.xmm_acc[i][0..10] = readRegister(ST0 + i, TS10);
+	    for (uint i = 0; i < 16; i++)
+		f.xmm_reg[i][0..16] = readRegister(XMM0 + i, TS16);
 	}
 
-	uint mapDwarfRegno(int dwregno)
+	uint mapDwarfRegno(uint dwregno)
 	{
 	    assert(false);
-	}
-
-	uint registerCount()
-	{
-	    return FSW + 1;
-	}
-
-	TargetSize registerWidth(int regno)
-	{
-	    if (regno <= RIP)
-		return TS8;
-	    else if (regno >= ST0 && regno <= ST7)
-		return TS10;
-	    else if (regno >= XMM0 && regno <= XMM15)
-		return TS16;
-	    else if (regno >= MM0 && regno <= MM7)
-		return TS8;
-	    else if (regno == RFLAGS)
-		return TS8;
-	    else
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	}
-
-	MachineRegister readIntRegister(uint gregno)
-	{
-	    return cast(MachineRegister) *grAddr(gregno);
-	}
-
-	void writeIntRegister(uint regno, MachineRegister val)
-	{
-	    *grAddr(regno) = val;
-	    grdirty_ = true;
-	}
-
-	ubyte[] readRegister(uint regno, TargetSize bytes)
-	{
-	    ubyte[] v;
-	    if (regno <= RIP) {
-		assert(bytes <= 8);
-		v.length = bytes;
-		v[] = (cast(ubyte*) grAddr(regno))[0..bytes];
-	    } else if (regno >= ST0 && regno <= ST7) {
-		ubyte* reg = fpregs_.xmm_acc[regno-ST0].ptr;
-		assert(bytes <= 10);
-		v.length = bytes;
-		switch (v.length) {
-		case 4:
-		case 8:
-		    auto f = readFloat(reg[0..10]);
-		    writeFloat(f, v);
-		    break;
-		default:
-		    v[] = reg[0..bytes];
-		}
-	    } else if (regno >= XMM0 && regno <= XMM15) {
-		assert(bytes <= 16);
-		v.length = bytes;
-		v[] = (cast(ubyte*) &fpregs_.xmm_reg[regno-XMM0])[0..bytes];
-	    } else if (regno >= MM0 && regno <= MM7) {
-		assert(bytes <= 8);
-		v.length = bytes;
-		v[] = (cast(ubyte*) &fpregs_.xmm_acc[regno-MM0])[0..bytes];
-	    } else if (regno == RFLAGS) {
-		v[] = (cast(ubyte*) &regs_.r_rflags)[0..bytes];
-	    } else {
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    }
-	    return v;
-	}
-
-	void writeRegister(uint regno, ubyte[] v)
-	{
-	    if (regno <= RIP) {
-		assert(v.length <= 8);
-		(cast(ubyte*) grAddr(regno))[0..v.length] = v[];
-		grdirty_ = true;
-	    } else if (regno >= ST0 && regno <= ST7) {
-		ubyte* reg = fpregs_.xmm_acc[regno-ST0].ptr;
-		assert(v.length <= 10);
-		switch (v.length) {
-		case 4:
-		case 8:
-		    auto f = readFloat(v);
-		    writeFloat(f, reg[0..10]);
-		    break;
-		default:
-		    reg[0..v.length] = v[];
-		}
-		fpdirty_ = true;
-	    } else if (regno >= XMM0 && regno <= XMM15) {
-		assert(v.length <= 16);
-		(cast(ubyte*) &fpregs_.xmm_reg[regno-XMM0])[0..v.length] = v[];
-		fpdirty_ = true;
-	    } else if (regno >= MM0 && regno <= MM7) {
-		assert(v.length <= 8);
-		(cast(ubyte*) &fpregs_.xmm_acc[regno-MM0])[0..v.length] = v[];
-		fpdirty_ = true;
-	    } else if (regno == RFLAGS) {
-		(cast(ubyte*) &regs_.r_rflags)[0..v.length] = v[];
-	    } else {
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    }
 	}
 
 	ubyte[] breakpoint()
@@ -1459,8 +1360,7 @@ class X86_64State: MachineState
 
 	void adjustPcAfterBreak()
 	{
-	    regs_.r_rip--;
-	    grdirty_ = true;
+	    writeIntRegister(RIP, readIntRegister(RIP) - 1);
 	}
 
 	TargetSize pointerWidth()
@@ -1566,8 +1466,7 @@ class X86_64State: MachineState
 	Value call(TargetAddress address, Type returnType, Value[] args)
 	{
 	    X86_64State saveState = new X86_64State(target_);
-	    saveState.regs_ = regs_;
-	    saveState.fpregs_ = fpregs_;
+	    saveState.bytes_[] = bytes_[];
 
 	    /*
 	     * If the return value is a structure, reserve some space
@@ -1576,10 +1475,13 @@ class X86_64State: MachineState
 	     */
 	    auto retcls = classify(returnType);
 	    if (retcls[0] == MEMORY) {
-		regs_.r_rsp -= 8 * retcls.length;
+		MachineRegister rsp = readIntRegister(RSP);
+		rsp -= 8 * retcls.length;
+		writeIntRegister(RSP, rsp);
 		ubyte[8] v;
-		writeInteger(regs_.r_rsp, v);
-		args = new Value(new ConstantLocation(v), grType_) ~ args;
+		writeInteger(rsp, v);
+		args = new Value(new ConstantLocation(v),
+				 registerType(RAX)) ~ args;
 	    }
 
 	    /*
@@ -1659,9 +1561,10 @@ class X86_64State: MachineState
 	     * called function executes its prologue. We also make
 	     * sure we avoid the red zone of the current function.
 	     */
-	    auto newFrame = regs_.r_rsp - 128 - (memargs.length + 16);
+	    MachineRegister rsp = readIntRegister(RSP);
+	    auto newFrame = rsp - 128 - (memargs.length + 16);
 	    newFrame &= ~15;
-	    regs_.r_rsp = newFrame + 8;
+	    writeIntRegister(RSP, newFrame + 8);
 
 	    /*
 	     * Put arguments on the stack. Possibly we should keep the
@@ -1694,9 +1597,7 @@ class X86_64State: MachineState
 	    /*
 	     * Set the thing running at the start of the function.
 	     */
-	    regs_.r_rip = address;
-	    grdirty_ = true;
-	    fpdirty_ = true;
+	    writeIntRegister(RIP, address);
 	    target_.cont(0);
 	    target_.wait;
 
@@ -1713,17 +1614,15 @@ class X86_64State: MachineState
 	    try {
 		retval = returnValue(returnType);
 	    } catch (EvalException e) {
-		regs_ = saveState.regs_;
-		fpregs_ = saveState.fpregs_;
-		grdirty_ = true;
-		fpdirty_= true;
+		bytes_[] = saveState.bytes_[];
+		foreach (ref d; dirty_)
+		    d = true;
 		throw e;
 	    }
 
-	    regs_ = saveState.regs_;
-	    fpregs_ = saveState.fpregs_;
-	    grdirty_ = true;
-	    fpdirty_= true;
+	    bytes_[] = saveState.bytes_[];
+	    foreach (ref d; dirty_)
+		d = true;
 
 	    return retval;
 	}
@@ -1762,7 +1661,8 @@ class X86_64State: MachineState
 		    else
 			retval ~= readRegister(ST0, returnType.byteWidth);
 		} else if (cl == MEMORY) {
-		    retval = readMemory(cast(TargetAddress) regs_.r_rax,
+		    retval = readMemory(cast(TargetAddress)
+					readIntRegister(RAX),
                                         returnType.byteWidth);
 		    break;
 		}
@@ -1828,87 +1728,9 @@ class X86_64State: MachineState
 	    return dis.disassemble(address, &readByte, lookupAddress);
 	}
 
-	string[] contents(MachineState)
-	{
-	    string[] res;
-	    res = RegNames[];
-	    res ~= "rflags";
-	    for (auto i = 0; i < 8; i++)
-		res ~= format("st%d", i);
-	    for (auto i = 0; i < 8; i++)
-		res ~= format("mm%d", i);
-	    for (auto i = 0; i < 16; i++)
-		res ~= format("xmm%d", i);
-	    return res;
-	}
-
-	bool lookup(string reg, MachineState, out DebugItem val)
-	{
-	    if (reg.length > 0 && reg[0] == '$')
-		reg = reg[1..$];
-	    if (reg == "pc") reg = "rip";
-	    foreach (i, s; RegNames) {
-		if (s == reg) {
-		    val = regAsValue(i, grType_);
-		    return true;
-		}
-	    }
-	    if (reg == "rflags") {
-		val = regAsValue(RFLAGS, grType_);
-	    }
-	    if (reg.length == 3 && reg[0..2] == "st"
-		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(ST0 + reg[2] - '0', frType_);
-		return true;
-	    }
-	    if (reg.length == 4 && reg[0..3] == "xmm"
-		&& reg[3] >= '0' && reg[3] <= '9') {
-		val = regAsValue(XMM0 + reg[3] - '0', xmmType_);
-		return true;
-	    }
-	    if (reg.length == 5 && reg[0..3] == "xmm"
-		&& reg[3] == '1'
-		&& reg[4] >= '0' && reg[4] <= '5') {
-		val = regAsValue(XMM0 + 10 + reg[4] - '0', xmmType_);
-		return true;
-	    }
-	    if (reg.length == 3 && reg[0..2] == "mm"
-		&& reg[2] >= '0' && reg[2] <= '7') {
-		val = regAsValue(MM0 + reg[2] - '0', mmType_);
-		return true;
-	    }
-		
-	    return false;
-	}
-	bool lookupStruct(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupUnion(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupTypedef(string reg, out Type)
-	{
-	    return false;
-	}
-    }
-
-    Value regAsValue(uint i, Type ty)
-    {
-	auto loc = new RegisterLocation(i, registerWidth(i));
-	return new Value(loc, ty);
     }
 
 private:
-    uint64_t* grAddr(uint regno)
-    {
-	if (regno > RIP || regmap_[regno] == ~0)
-	    throw new TargetException(
-		format("Unsupported register index %d", regno));
-	return cast(uint64_t*) (cast(ubyte*) &regs_ + regmap_[regno]);
-    }
-
     enum {
 	INTEGER, SSE, SSEUP, X87, X87UP, COMPLEX_X87, NO_CLASS, MEMORY,
     }
@@ -2065,16 +1887,7 @@ private:
     }
 
     Target	target_;
-    bool	grdirty_;
     uint32_t	tp_;
-    reg64	regs_;
-    xmmreg64	fpregs_;
-    bool	fpdirty_;
-
-    static Type	grType_;
-    static Type	frType_;
-    static Type	xmmType_;
-    static Type	mmType_;
 }
 
 private:
