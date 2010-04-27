@@ -1962,6 +1962,11 @@ class RunCommand: Command
 	    return "run";
 	}
 
+	string shortName()
+	{
+	    return "r";
+	}
+
 	string description()
 	{
 	    return "run the program being debugged";
