@@ -204,7 +204,7 @@ private:
     ubyte[] save_;
 }
 
-class PtraceThread: TargetThread
+class PtraceThread: TargetThread, Ptrace
 {
     this(PtraceTarget target, lwpid_t lwpid)
     {
@@ -222,6 +222,10 @@ class PtraceThread: TargetThread
 	uint id()
 	{
 	    return id_;
+	}
+	void ptrace(int op, ubyte* addr, uint data)
+	{
+	    target_.ptrace(op, lwpid_, cast(char*) addr, data);
 	}
     }
 
@@ -274,9 +278,7 @@ private:
     void readState()
     {
 	try {
-	    auto cmds = state_.ptraceReadCommands;
-	    foreach (cmd; cmds)
-		target_.ptrace(cmd.req, lwpid_, cast(char*) cmd.addr, cmd.data);
+	    ptraceReadState(this);
 	} catch (PtraceException pte) {
 	    /*
 	     * We may get an error reading GSBASE if the kernel doesn't 
@@ -286,9 +288,7 @@ private:
     }
     void writeState()
     {
-	auto cmds = state_.ptraceWriteCommands;
-	foreach (cmd; cmds)
-	    target_.ptrace(cmd.req, lwpid_, cast(char*) cmd.addr, cmd.data);
+	ptraceWriteState(this);
     }
 
     PtraceTarget target_;

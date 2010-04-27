@@ -3238,12 +3238,13 @@ class FDE
 	fdeFs.clear(this, state.registerCount);
 
 	auto pc = state.pc;
-	execute(cie.instructionStart, cie.instructionEnd, pc, cieFs, cieFs);
+	execute(state, cie.instructionStart, cie.instructionEnd,
+		pc, cieFs, cieFs);
 
 	fdeFs = cieFs;
-	execute(instructionStart, instructionEnd, pc, fdeFs, cieFs);
+	execute(state, instructionStart, instructionEnd, pc, fdeFs, cieFs);
 
-	auto reg = state.readIntRegister(state.mapDwarfRegno(fdeFs.cfaReg));
+	auto reg = state.readIntRegister(fdeFs.cfaReg);
 	return new MemoryLocation(cast(TargetAddress) (reg + fdeFs.cfaOffset),
                                   TS1);
     }
@@ -3256,21 +3257,21 @@ class FDE
 	fdeFs.clear(this, state.registerCount);
 
 	auto pc = state.pc;
-	execute(cie.instructionStart, cie.instructionEnd, pc, cieFs, cieFs);
+	execute(state, cie.instructionStart, cie.instructionEnd,
+		pc, cieFs, cieFs);
 
 	fdeFs = cieFs;
-	execute(instructionStart, instructionEnd, pc, fdeFs, cieFs);
+	execute(state, instructionStart, instructionEnd,
+		pc, fdeFs, cieFs);
 
 	if (fdeFs.regs[cie.returnAddress].rule == RLoc.Rule.undefined)
 	    return null;
 	MachineState newState = state.dup;
-	MachineRegister cfa = cast(MachineRegister)
-            (state.readIntRegister(state.mapDwarfRegno(fdeFs.cfaReg))
-	     + fdeFs.cfaOffset);
-	foreach (i, rl; fdeFs.regs) {
+	MachineRegister cfa = 
+            state.readIntRegister(fdeFs.cfaReg) + fdeFs.cfaOffset;
+	foreach (regno, rl; fdeFs.regs) {
 	    long off;
 	    ubyte[] b;
-	    uint regno = state.mapDwarfRegno(i);
 	    switch (rl.rule) {
 	    case RLoc.Rule.undefined:
 	    case RLoc.Rule.sameValue:
@@ -3282,20 +3283,16 @@ class FDE
 		off = rl.N;
 		b = state.readMemory(cast(TargetAddress) (cfa + off),
                                      cast(TargetSize) (dw.obj_.is64 ? 8 : 4));
-		newState.writeIntRegister
-		    (regno, cast(MachineRegister) dw.obj_.read(b));
+		newState.writeIntRegister(regno, dw.obj_.read(b));
 		break;
 
 	    case RLoc.Rule.valOffsetN:
 		off = rl.N;
-		newState.writeIntRegister
-		    (regno, cast(MachineRegister) (cfa + off));
+		newState.writeIntRegister(regno, cfa + off);
 		break;
 		    
 	    case RLoc.Rule.registerR:
-		newState.writeIntRegister(regno,
-					  state.readIntRegister(
-					      state.mapDwarfRegno(rl.R)));
+		newState.writeIntRegister(regno, state.readIntRegister(rl.R));
 		break;
 
 	    case RLoc.Rule.expressionE:
@@ -3307,8 +3304,9 @@ class FDE
     }
 
 private:
-    void execute(char* p, char* pEnd, ulong pc, ref FrameState fs,
-	in FrameState cieFs)
+    void execute(MachineState state,
+		 char* p, char* pEnd, ulong pc, ref FrameState fs,
+		 in FrameState cieFs)
     {
 	uint reg;
 	ulong off;
@@ -3358,7 +3356,7 @@ private:
 		break;
 
 	    case DW_CFA_def_cfa:
-		fs.cfaReg = dw.parseULEB128(p);
+		fs.cfaReg = state.mapDwarfRegno(dw.parseULEB128(p));
 		fs.cfaOffset = dw.parseULEB128(p);
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa: cfa=%d, off=%d",
@@ -3366,7 +3364,7 @@ private:
 		break;
 
 	    case DW_CFA_def_cfa_sf:
-		fs.cfaReg = dw.parseULEB128(p);
+		fs.cfaReg = state.mapDwarfRegno(dw.parseULEB128(p));
 		fs.cfaOffset = dw.parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_sf: cfa=%d, off=%d",
@@ -3374,7 +3372,7 @@ private:
 		break;
 
 	    case DW_CFA_def_cfa_register:
-		fs.cfaReg = dw.parseULEB128(p);
+		fs.cfaReg = state.mapDwarfRegno(dw.parseULEB128(p));
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_register: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
@@ -3405,14 +3403,14 @@ private:
 		break;
 
 	    case DW_CFA_same_value:
-		reg = dw.parseULEB128(p);
+		reg = state.mapDwarfRegno(dw.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.sameValue;
 		debug(unwind)
 		    writefln("DW_CFA_same_value: reg=%d", reg);
 		break;
 
 	    case DW_CFA_offset:
-		reg= op & 0x3f;
+		reg = state.mapDwarfRegno(op & 0x3f);
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
 		fs.regs[reg].N = dw.parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
@@ -3421,7 +3419,7 @@ private:
 		break;
 			
 	    case DW_CFA_offset_extended:
-		reg = dw.parseULEB128(p);
+		reg = state.mapDwarfRegno(dw.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
 		fs.regs[reg].N = dw.parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
@@ -3430,7 +3428,7 @@ private:
 		break;
 
 	    case DW_CFA_offset_extended_sf:
-		reg = dw.parseULEB128(p);
+		reg = state.mapDwarfRegno(dw.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
 		fs.regs[reg].N = dw.parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
@@ -3439,7 +3437,7 @@ private:
 		break;
 
 	    case DW_CFA_val_offset:
-		reg = dw.parseULEB128(p);
+		reg = state.mapDwarfRegno(dw.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.valOffsetN;
 		fs.regs[reg].N = dw.parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
@@ -3448,8 +3446,8 @@ private:
 		break;
 
 	    case DW_CFA_register:
-		reg = dw.parseULEB128(p);
-		fs.regs[reg] = fs.regs[dw.parseULEB128(p)];
+		reg = state.mapDwarfRegno(dw.parseULEB128(p));
+		fs.regs[reg] = fs.regs[state.mapDwarfRegno(dw.parseULEB128(p))];
 		debug(unwind)
 		    writefln("DW_CFA_register: reg=%d", reg);
 		break;
@@ -3461,15 +3459,15 @@ private:
 		throw new Exception("no support for CFA expressions");
 
 	    case DW_CFA_restore:
-		reg = op & 0x3f;
-		fs.regs[reg] = cieFs.regs[op & 0x3f];
+		reg = state.mapDwarfRegno(op & 0x3f);
+		fs.regs[reg] = cieFs.regs[reg];
 		debug(unwind)
 		    writefln("DW_CFA_restore: reg=%d", reg);
 		break;
 
 	    case DW_CFA_restore_extended:
-		reg = dw.parseULEB128(p);
-		fs.regs[reg] = cieFs.regs[op & 0x3f];
+		reg = state.mapDwarfRegno(dw.parseULEB128(p));
+		fs.regs[reg] = cieFs.regs[state.mapDwarfRegno(op & 0x3f)];
 		debug(unwind)
 		    writefln("DW_CFA_restore_extended: reg=%d", reg);
 		break;

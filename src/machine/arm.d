@@ -87,15 +87,72 @@ private string[] ArmRegNames =
 
 class ArmState: MachineState
 {
+    /**
+     * Register numbers are chosen to match Dwarf debug info.
+     */
+    enum
+    {
+	R0,
+	R1,
+	R2,
+	R3,
+	R4,
+	R5,
+	R6,
+	R7,
+	R8,
+	R9,
+	R10,
+	R11,
+	R12,
+	SP,
+	LR,
+	PC,
+	CPSR
+    }
+
+    private static string[] ArmRegNames =
+    [
+	"r0",
+	"r1",
+	"r2",
+	"r3",
+	"r4",
+	"r5",
+	"r6",
+	"r7",
+	"r8",
+	"r9",
+	"r10",
+	"r11",
+	"r12",
+	"sp",
+	"lr",
+	"pc",
+	"cpsr",
+    ];
+
+    mixin MachineRegisters;
+
     this(Target target)
     {
 	target_ = target;
+	initRegisters;
+    }
+
+    static this()
+    {
+	auto lang = CLikeLanguage.instance;
+	Type intType = lang.integerType("uint32_t", false, TS4);
+	foreach (reg; ArmRegNames)
+	    addRegister(intType, reg);
     }
 
     override {
 	void dumpState()
 	{
-	    foreach (i, val; gregs_) {
+	    for (auto i = 0; i < registerCount; i++) {
+		MachineRegister val = readIntRegister(i);
 		writef("%6s:%08x ", ArmRegNames[i], val);
 		if ((i & 3) == 3)
 		    writefln("");
@@ -104,13 +161,12 @@ class ArmState: MachineState
 
 	TargetAddress pc()
 	{
-            return cast(TargetAddress) gregs_[ArmReg.PC];
+	    return cast(TargetAddress) readIntRegister(PC);
 	}
 
 	void pc(TargetAddress pc)
 	{
-	    gregs_[ArmReg.PC] = cast(uint) pc;
-	    grdirty_ = true;
+	    writeIntRegister(PC, cast(MachineRegister) pc);
 	}
 
 	TargetAddress tp()
@@ -131,42 +187,68 @@ class ArmState: MachineState
 	    return cast(TargetAddress)(base + offset);
 	}
 
-	PtraceCommand[] ptraceReadCommands()
+	void ptraceReadState(Ptrace pt)
 	{
-	    grdirty_ = false;
-	    version (FreeBSD)
-		return [PtraceCommand(PT_GETREGS, cast(ubyte*) gregs_.ptr)];
-	    return null;
+	    version (FreeBSD) {
+		ubyte[reg.sizeof] regs;
+		setGRs(regs.ptr);
+		pt.ptrace(PT_GETREGS, regs.ptr, 0);
+	    }
+	    foreach (ref d; dirty_)
+		d = false;
 	}
 
-	PtraceCommand[] ptraceWriteCommands()
+	void ptraceWriteState(Ptrace pt)
 	{
-	    if (grdirty_) {
-		grdirty_ = false;
-		version (FreeBSD)
-		    return [PtraceCommand(PT_GETREGS, cast(ubyte*) gregs_.ptr, 0)];
+	    bool grdirty = false;
+	    foreach (regno, ref d; dirty_) {
+		if (d) {
+		    grdirty = true;
+		    d = false;
+		}
 	    }
-	    return null;
+	    version (FreeBSD) {
+		if (grdirty) {
+		    ubyte[reg.sizeof] regs;
+		    getGRs(regs.ptr);
+		    pt.ptrace(PT_SETREGS, regs.ptr, 0);
+		}
+	    }
 	}
 
 	void setGRs(ubyte* p)
 	{
-	    grdirty_ = true;
+	    reg32* r = cast(reg32*) p;
+
+	    foreach (regno, v; r.r)
+		writeIntRegister(regno, v);
+	    writeIntRegister(SP, r.r_sp);
+	    writeIntRegister(LR, r.r_lr);
+	    writeIntRegister(PC, r.r_pc);
+	    writeIntRegister(CPSR, r.r_cpsr);
 	}
 
 	void getGRs(ubyte* p)
 	{
+	    reg32* r = cast(reg32*) p;
+
+	    foreach (regno, ref v; r.r)
+		v = readIntRegister(regno);
+	    r.r_sp = readIntRegister(SP);
+	    r.r_lr = readIntRegister(LR);
+	    r.r_pc = readIntRegister(PC);
+	    r.r_cpsr = readIntRegister(CPSR);
 	}
 
 	uint spregno()
 	{
-	    return 4;
+	    return SP;
 	}
 
 	MachineState dup()
 	{
 	    ArmState newState = new ArmState(target_);
-	    newState.gregs_[] = gregs_[];
+	    newState.bytes_[] = bytes_[];
 	    newState.tp_ = tp_;
 	    return newState;
 	}
@@ -183,66 +265,9 @@ class ArmState: MachineState
 	{
 	}
 
-	uint mapDwarfRegno(int dwregno)
+	uint mapDwarfRegno(uint dwregno)
 	{
 	    return dwregno;
-	}
-
-	uint registerCount()
-	{
-	    return ArmReg.GR_COUNT;
-	}
-
-	TargetSize registerWidth(int regno)
-	{
-	    if (regno < ArmReg.GR_COUNT)
-		return TS4;
-	    else
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	}
-
-	MachineRegister readIntRegister(uint regno)
-	{
-	    if (regno >= ArmReg.GR_COUNT)
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    return cast(MachineRegister) gregs_[regno];
-	}
-
-	void writeIntRegister(uint regno, MachineRegister val)
-	{
-	    if (regno >= ArmReg.GR_COUNT)
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    gregs_[regno] = val;
-	    grdirty_ = true;
-	}
-
-	ubyte[] readRegister(uint regno, TargetSize bytes)
-	{
-	    if (regno < ArmReg.GR_COUNT) {
-		ubyte[] v;
-		assert(bytes <= 4);
-		v.length = bytes;
-		v[] = (cast(ubyte*) &gregs_[regno])[0..bytes];
-		return v;
-	    } else {
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    }
-	}
-
-	void writeRegister(uint regno, ubyte[] v)
-	{
-	    if (regno < ArmReg.GR_COUNT) {
-		assert(v.length <= 4);
-		(cast(ubyte*) &gregs_[regno])[0..v.length] = v[];
-		grdirty_ = true;
-	    } else {
-		throw new TargetException(
-		    format("Unsupported register index %d", regno));
-	    }
 	}
 
 	ubyte[] breakpoint()
@@ -253,8 +278,7 @@ class ArmState: MachineState
 
 	void adjustPcAfterBreak()
 	{
-	    gregs_[ArmReg.PC] -= 4;
-	    grdirty_ = true;
+	    writeIntRegister(PC, readIntRegister(PC) - 4);
 	}
 
 	TargetSize pointerWidth()
@@ -364,44 +388,6 @@ class ArmState: MachineState
 	    }
 	    return machine.armdis.disasm(address, &readWord, lookupAddress);
 	}
-
-	string[] contents(MachineState)
-	{
-	    return ArmRegNames[];
-	}
-
-	bool lookup(string reg, MachineState, out DebugItem val)
-	{
-	    if (reg.length > 0 && reg[0] == '$')
-		reg = reg[1..$];
-	    foreach (i, s; ArmRegNames) {
-		if (s == reg) {
-		    val = regAsValue(i);
-		    return true;
-		}
-	    }
-	    return false;
-	}
-	bool lookupStruct(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupUnion(string reg, out Type)
-	{
-	    return false;
-	}
-	bool lookupTypedef(string reg, out Type)
-	{
-	    return false;
-	}
-    }
-
-    Value regAsValue(uint i)
-    {
-	auto loc = new RegisterLocation(i, registerWidth(i));
-	auto ty = CLikeLanguage.instance.integerType(
-	    "uint32_t", false, registerWidth(i));
-	return new Value(loc, ty);
     }
 
 private:
@@ -414,7 +400,30 @@ private:
 	double f;
     }
     Target	target_;
-    uint32_t	gregs_[ArmReg.GR_COUNT];
-    bool	grdirty_;
     uint32_t	tp_;
 }
+
+private:
+/*	$NetBSD: reg.h,v 1.2 2001/02/23 21:23:52 reinoud Exp $	*/
+/* $FreeBSD: stable/7/sys/arm/include/reg.h 137229 2004-11-04 19:20:54Z cognet $ */
+
+struct reg32 {
+	uint r[13];
+	uint r_sp;
+	uint r_lr;
+	uint r_pc;
+	uint r_cpsr;
+};
+
+/+
+
+struct fpreg {
+	unsigned int fpr_fpsr;
+	fp_reg_t fpr[8];
+};
+
+struct dbreg {
+	        unsigned int  dr[8];    /* debug registers */
+};
+
++/

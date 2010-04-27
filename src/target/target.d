@@ -166,14 +166,14 @@ template TargetThreadBase()
 	return state_.tls_get_addr(index, offset);
     }
 
-    PtraceCommand[] ptraceReadCommands()
+    void ptraceReadState(Ptrace pt)
     {
-	return state_.ptraceReadCommands;
+	state_.ptraceReadState(pt);
     }
 
-    PtraceCommand[] ptraceWriteCommands()
+    void ptraceWriteState(Ptrace pt)
     {
-	return state_.ptraceWriteCommands;
+	return state_.ptraceWriteState(pt);
     }
 
     void setGRs(ubyte* regs)
@@ -206,7 +206,7 @@ template TargetThreadBase()
 	return state_.getFRs(regs);
     }
 
-    uint mapDwarfRegno(int dwregno)
+    uint mapDwarfRegno(uint dwregno)
     {
 	return state_.mapDwarfRegno(dwregno);
     }
@@ -216,9 +216,14 @@ template TargetThreadBase()
 	return state_.registerCount;
     }
 
-    TargetSize registerWidth(int regno)
+    TargetSize registerWidth(uint regno)
     {
 	return state_.registerWidth(regno);
+    }
+
+    Type registerType(uint regno)
+    {
+	return state_.registerType(regno);
     }
 
     MachineRegister readIntRegister(uint regno)
