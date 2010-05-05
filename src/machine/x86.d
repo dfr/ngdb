@@ -27,6 +27,7 @@
 module machine.x86;
 import machine.machine;
 import debuginfo.debuginfo;
+import debuginfo.dwarf;
 import debuginfo.expr;
 import debuginfo.language;
 import debuginfo.types;
@@ -830,6 +831,108 @@ class X86State: MachineState
 		    "Can't read return value for function call");
 
 	    return new Value(new ConstantLocation(retval), returnType);
+	}
+
+	FDE parsePrologue(TargetAddress func)
+	{
+	    /*
+	     * We will create unwind records which use a frame address
+	     * pointing at the first stack byte after the return
+	     * address.
+	     *
+	     * First make a CIE describing the stack frame at the
+	     * beginning of the function. The CFA value is ESP+4 and
+	     * the saved EIP value is located at CFA-4.
+	     */
+	    char[] cieIns;
+	    cieIns ~= [ DW_CFA_def_cfa, 4, 4,
+	    		DW_CFA_offset + 8, 1 ];
+	    auto cie = new CIE;
+	    cie.codeAlign = 1;
+	    cie.dataAlign = -4;
+	    cie.returnAddress = 8;
+	    cie.instructionStart = cieIns.ptr;
+	    cie.instructionEnd = cieIns.ptr + cieIns.length;
+
+	    /*
+	     * Look for something like this:
+	     *
+	     *		push ebp
+	     *		mov ebp,esp
+	     *		sub esp,<framesize>
+	     *		push <reg>
+	     *		...
+	     */
+	    ubyte[] prologue = readMemory(func, 32);
+	    uint i;
+	    char[] fdeIns;
+	    uint off;		// offset from ESP to frame address
+	    uint cfa;		// current CFA register
+	    uint cfaOff;	// offset from CFA reg to frame address
+	    /*
+	     * 55	push ebp
+	     */
+	    i = 0;
+	    off = 4;
+	    cfa = 4;
+	    cfaOff = 4;
+	    for (;;) {
+		//writefln("%02x: CFA at r%d+%d (ESP+%d)", prologue[i], cfa, cfaOff, off);
+		/*
+		 * 5N	push <reg N>
+		 */
+		if ((prologue[i] & 0xf8) == 0x50) {
+		    /*
+		     * After the push, PC advances by one, reg is at CFA-off
+		     * If the CFA is still based on ESP, adjust the CFA
+		     * offset.
+		     */
+		    auto reg = prologue[i] & 0x07;
+		    off += 4;
+		    fdeIns ~= [ DW_CFA_advance_loc + 1,
+				DW_CFA_offset + reg, off / 4 ];
+		    if (cfa == 4) {
+			fdeIns ~= [ DW_CFA_def_cfa_offset, off ];
+			cfaOff = off;
+		    }
+		    i += 1;
+		    continue;
+		}
+		/*
+		 * 89 e5	mov ebp,esp
+		 */
+		if (prologue[i] == 0x8b && prologue[i+1] == 0xec) {
+		    /*
+		     * After the move, PC advances by two, CFA register
+		     * changes to EBP.
+		     */
+		    fdeIns ~= [ DW_CFA_advance_loc + 2,
+				DW_CFA_def_cfa_register, 5 ];
+		    cfa = 5;
+		    i += 2;
+		    continue;
+		}
+		/*
+		 * 83 ec NN	sub esp,NN
+		 */
+		if (prologue[i] == 0x83 && prologue[i+1] == 0xec) {
+		    /*
+		     * After the subtract, PC advances by 3.
+		     */
+		    off += prologue[i+2];
+		    i += 3;
+		    continue;
+		}
+		break;
+	    }
+	    if (fdeIns.length == 0)
+		return null;
+	    auto fde = new FDE;
+	    fde.cie = cie;
+	    fde.initialLocation = func;
+	    fde.instructionStart = fdeIns.ptr;
+	    fde.instructionEnd = fdeIns.ptr + fdeIns.length;
+	    return fde;
 	}
 
 	TargetAddress findFlowControl(TargetAddress start, TargetAddress end)
@@ -1675,6 +1778,11 @@ class X86_64State: MachineState
 	    }
 
 	    return new Value(new ConstantLocation(retval), returnType);
+	}
+
+	FDE parsePrologue(TargetAddress func)
+	{
+	    return null;
 	}
 
 	TargetAddress findFlowControl(TargetAddress start, TargetAddress end)

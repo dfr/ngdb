@@ -34,6 +34,7 @@ import debuginfo.language;
 import debuginfo.types;
 import machine.machine;
 static import std.path;
+import std.demangle;
 import std.string;
 import std.stdio;
 version(tangobos) import std.compat;
@@ -667,6 +668,18 @@ enum
     DW_CFA_GNU_negative_offset_extended	= 0x2f,
 }
 
+private string demangleD(string s)
+{
+    s = std.demangle.demangle(s);
+    auto i = find(s, " ");
+    if (i >= 0)
+	s = s[i+1..$];
+    i = find(s, "(");
+    if (i >= 0)
+	s = s[0..i];
+    return s;
+}
+
 class DwarfFile: public DebugInfo
 {
     this(Objfile obj)
@@ -694,12 +707,13 @@ class DwarfFile: public DebugInfo
 		    if (!off)
 			break;
 		    string name = parseString(p);
+		    name = demangleD(name);
 		    if (name in set.names)
 			set.names[name] ~= off;
 		    else
 			set.names[name] = [off];
-		    if (name == "foo.foo")
-		    writefln("%s = %d (cu %d)", name, off, set.cuOffset);
+		    //if (name == "foo.foo")
+		    //writefln("%s = %d (cu %d)", name, off, set.cuOffset);
 		}
 		pubnames_ ~= set;
 	    }
@@ -1054,9 +1068,30 @@ class DwarfFile: public DebugInfo
 		}
 	    }
 
-	    foreach (fde; fdes_)
-		if (fde.contains(pc))
-		    return fde.unwind(state);
+	    bool isDMD = false;
+	    if (cu.lang_ == DLanguage.instance) {
+		auto p = cu.die[DW_AT_producer].toString;
+		auto dmd = "Digital Mars D";
+		if (p.length > dmd.length
+		    && p[0..dmd.length] == dmd)
+		    isDMD = true;
+	    }
+
+	    /*
+	     * DMD generates unusable frame information (CFA is set to
+	     * EBP+0 where it should be EBP+8).
+	     */
+	    if (!isDMD)
+		foreach (fde; fdes_)
+		    if (fde.contains(pc))
+			return fde.unwind(state);
+
+	    auto fde = state.parsePrologue(func.addresses[0].start);
+	    if (fde) {
+		fde.dw = this;
+		return fde.unwind(state);
+	    }
+
 	    return null;
 	}
     }
@@ -2672,10 +2707,14 @@ class DIE
     {
 	auto n = this[DW_AT_name];
 
-	if (n)
+	if (n) {
+	    if (cu_.lang == DLanguage.instance) {
+		return demangleD(n.toString);
+	    }
 	    return n.toString;
-	else
+	} else {
 	    return "<unknown>";
+	}
     }
 
     DebugItem debugItem()
@@ -3269,6 +3308,8 @@ class FDE
 	MachineState newState = state.dup;
 	MachineRegister cfa = 
             state.readIntRegister(fdeFs.cfaReg) + fdeFs.cfaOffset;
+	debug (unwind)
+	    writefln("CFA = r%d+%d (0x%x)", fdeFs.cfaReg, fdeFs.cfaOffset, cfa);
 	foreach (regno, rl; fdeFs.regs) {
 	    long off;
 	    ubyte[] b;
@@ -3283,6 +3324,8 @@ class FDE
 		off = rl.N;
 		b = state.readMemory(cast(TargetAddress) (cfa + off),
                                      cast(TargetSize) (dw.obj_.is64 ? 8 : 4));
+		debug (unwind)
+		    writefln("reg%d at CFA-%d (0x%x)", regno, -off, dw.obj_.read(b));
 		newState.writeIntRegister(regno, dw.obj_.read(b));
 		break;
 

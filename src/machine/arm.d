@@ -27,6 +27,7 @@
 module machine.arm;
 import machine.machine;
 import debuginfo.debuginfo;
+import debuginfo.dwarf;
 import debuginfo.expr;
 import debuginfo.language;
 import debuginfo.types;
@@ -343,6 +344,11 @@ class ArmState: MachineState
 	    return new Value(new ConstantLocation(readRegister
 						  (0, registerWidth(0))),
 			     returnType);
+	}
+
+	FDE parsePrologue(TargetAddress func)
+	{
+	    return null;
 	}
 
 	TargetAddress findFlowControl(TargetAddress start, TargetAddress end)

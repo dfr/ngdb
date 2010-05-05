@@ -31,6 +31,7 @@ objs[]+=
 #DFLAGS+= -debug=breakpoints
 #DFLAGS+= -debug=step
 #DFLAGS+= -debug=remote
+#DFLAGS+= -debug=unwind
 
 DFLAGS+= -I$(dir $(ROOT)/gtkD/src)
 
