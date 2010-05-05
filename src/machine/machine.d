@@ -27,6 +27,7 @@
 module machine.machine;
 import target.target;
 import debuginfo.debuginfo;
+import debuginfo.dwarf;
 import debuginfo.types;
 version(tangobos) import std.compat;
 import std.bitarray;
@@ -241,6 +242,11 @@ class MachineState: Scope
      * given type.
      */
     abstract Value returnValue(Type returnType);
+
+    /**
+     * Parse function prologue and generate corresponding unwind records.
+     */
+    abstract FDE parsePrologue(TargetAddress func);
 
     /**
      * Scan the interval [start..end) and return the address of

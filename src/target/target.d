@@ -33,8 +33,8 @@ import objfile.elf;
 import machine.machine;
 version(tangobos) import std.compat;
 
-typedef ulong TargetAddress;
-typedef ulong TargetSize;
+alias ulong TargetAddress;
+alias ulong TargetSize;
 
 enum : TargetSize
 {
@@ -309,6 +309,11 @@ template TargetThreadBase()
     Value returnValue(Type returnType)
     {
 	return state_.returnValue(returnType);
+    }
+
+    FDE parsePrologue(TargetAddress func)
+    {
+	return state_.parsePrologue(func);
     }
 
     TargetAddress findFlowControl(TargetAddress start,
