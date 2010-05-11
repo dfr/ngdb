@@ -1101,7 +1101,6 @@ private:
 	    } else {
 		// FDE
 		FDE fde = new FDE;
-		fde.is64 = obj_.is64;
 		fde.cie = cies[cie_id];
 		fde.initialLocation = parseAddress(p) + offset;
 		fde.addressRange = parseAddress(p);
