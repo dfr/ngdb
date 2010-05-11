@@ -8,6 +8,7 @@ objs[]=
 	debuginfo/expr
 	debuginfo/language
 	debuginfo/types
+	debuginfo/unwind
 	debuginfo/utils
 	machine/machine
 	machine/arm
