@@ -1087,10 +1087,8 @@ class DwarfFile: public DebugInfo
 			return fde.unwind(state);
 
 	    auto fde = state.parsePrologue(func.addresses[0].start);
-	    if (fde) {
-		fde.dw = this;
+	    if (fde)
 		return fde.unwind(state);
-	    }
 
 	    return null;
 	}
@@ -1139,7 +1137,7 @@ private:
 	    } else {
 		// FDE
 		FDE fde = new FDE;
-		fde.dw = this;
+		fde.is64 = obj_.is64;
 		fde.cie = cies[cie_id];
 		fde.initialLocation = parseAddress(p) + offset;
 		fde.addressRange = parseAddress(p);
@@ -1594,7 +1592,7 @@ private:
 	return cast(TargetSize) lv;
     }
 
-    ulong parseULEB128(ref char* p)
+    static ulong parseULEB128(ref char* p)
     {
 	ulong v = 0;
 	int shift = 0;
@@ -1611,7 +1609,7 @@ private:
 	return v;
     }
 
-    long parseSLEB128(ref char* p)
+    static long parseSLEB128(ref char* p)
     {
 	long v = 0;
 	int shift = 0;
@@ -3220,7 +3218,7 @@ class CIE
 
 class FDE
 {
-    DwarfFile dw;
+    bool is64;
     CIE cie;
     ulong initialLocation;
     ulong addressRange;
@@ -3323,10 +3321,10 @@ class FDE
 	    case RLoc.Rule.offsetN:
 		off = rl.N;
 		b = state.readMemory(cast(TargetAddress) (cfa + off),
-                                     cast(TargetSize) (dw.obj_.is64 ? 8 : 4));
+                                     cast(TargetSize) (is64 ? 8 : 4));
 		debug (unwind)
-		    writefln("reg%d at CFA-%d (0x%x)", regno, -off, dw.obj_.read(b));
-		newState.writeIntRegister(regno, dw.obj_.read(b));
+		    writefln("reg%d at CFA-%d", regno, -off);
+		newState.writeRegister(regno, b);
 		break;
 
 	    case RLoc.Rule.valOffsetN:
@@ -3354,11 +3352,47 @@ private:
 	uint reg;
 	ulong off;
 
+	ulong parseInteger(ref char* p, uint width)
+	{
+	    ubyte* bp;
+	    bp = cast(ubyte*) p;
+	    p += width;
+	    return state.readInteger(bp[0..width]);
+	}
+
+	ulong parseUByte(ref char* p)
+	{
+	    return parseInteger(p, 1);
+	}
+
+	ulong parseUShort(ref char* p)
+	{
+	    return parseInteger(p, 2);
+	}
+
+	ulong parseUInt(ref char* p)
+	{
+	    return parseInteger(p, 4);
+	}
+
+	ulong parseULong(ref char* p)
+	{
+	    return parseInteger(p, 8);
+	}
+
+	TargetAddress parseAddress(ref char* p)
+	{
+	    if (is64)
+		return parseULong(p);
+	    else
+		return parseUInt(p);
+	}
+
 	while (p < pEnd) {
 	    auto op = *p++;
 	    switch ((op & 0xc0) ? (op & 0xc0) : op) {
 	    case DW_CFA_set_loc:
-		fs.loc = dw.parseAddress(p);
+		fs.loc = parseAddress(p);
 		debug(unwind)
 		    writefln("DW_CFA_set_loc: 0x%x", fs.loc);
 		break;
@@ -3371,65 +3405,65 @@ private:
 		break;
 
 	    case DW_CFA_advance_loc1:
-		off = dw.parseUByte(p) * cie.codeAlign;
+		off = parseUByte(p) * cie.codeAlign;
 		fs.loc += off;
 		debug(unwind)
 		    writefln("DW_CFA_advance_loc1: %d to 0x%x", off, fs.loc);
 		break;
 
 	    case DW_CFA_advance_loc2:
-		off = dw.parseUShort(p) * cie.codeAlign;
+		off = parseUShort(p) * cie.codeAlign;
 		fs.loc += off;
 		debug(unwind)
 		    writefln("DW_CFA_advance_loc2: %d to 0x%x", off, fs.loc);
 		break;
 
 	    case DW_CFA_advance_loc4:
-		off = dw.parseUInt(p) * cie.codeAlign;
+		off = parseUInt(p) * cie.codeAlign;
 		fs.loc += off;
 		debug(unwind)
 		    writefln("DW_CFA_advance_loc4: %d to 0x%x", off, fs.loc);
 		break;
 
 	    case DW_CFA_MIPS_advance_loc8:
-		off = dw.parseULong(p) * cie.codeAlign;
+		off = parseULong(p) * cie.codeAlign;
 		fs.loc += off;
 		debug(unwind)
 		    writefln("DW_CFA_MIPS_advance_loc8: %d to 0x%x", off, fs.loc);
 		break;
 
 	    case DW_CFA_def_cfa:
-		fs.cfaReg = state.mapDwarfRegno(dw.parseULEB128(p));
-		fs.cfaOffset = dw.parseULEB128(p);
+		fs.cfaReg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		fs.cfaOffset = DwarfFile.parseULEB128(p);
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_sf:
-		fs.cfaReg = state.mapDwarfRegno(dw.parseULEB128(p));
-		fs.cfaOffset = dw.parseSLEB128(p) * cie.dataAlign;
+		fs.cfaReg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		fs.cfaOffset = DwarfFile.parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_sf: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_register:
-		fs.cfaReg = state.mapDwarfRegno(dw.parseULEB128(p));
+		fs.cfaReg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_register: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_offset:
-		fs.cfaOffset = dw.parseULEB128(p);
+		fs.cfaOffset = DwarfFile.parseULEB128(p);
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_offset: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_offset_sf:
-		fs.cfaOffset = dw.parseSLEB128(p) * cie.dataAlign;
+		fs.cfaOffset = DwarfFile.parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_offset_sf: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
@@ -3439,14 +3473,14 @@ private:
 		throw new Exception("no support for CFA expressions");
 
 	    case DW_CFA_undefined:
-		reg = dw.parseULEB128(p);
+		reg = DwarfFile.parseULEB128(p);
 		fs.regs[reg].rule = RLoc.Rule.undefined;
 		debug(unwind)
 		    writefln("DW_CFA_undefined: reg=%d", reg);
 		break;
 
 	    case DW_CFA_same_value:
-		reg = state.mapDwarfRegno(dw.parseULEB128(p));
+		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.sameValue;
 		debug(unwind)
 		    writefln("DW_CFA_same_value: reg=%d", reg);
@@ -3455,42 +3489,42 @@ private:
 	    case DW_CFA_offset:
 		reg = state.mapDwarfRegno(op & 0x3f);
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
-		fs.regs[reg].N = dw.parseULEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = DwarfFile.parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_offset: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 			
 	    case DW_CFA_offset_extended:
-		reg = state.mapDwarfRegno(dw.parseULEB128(p));
+		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
-		fs.regs[reg].N = dw.parseULEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = DwarfFile.parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_offset_extended: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 
 	    case DW_CFA_offset_extended_sf:
-		reg = state.mapDwarfRegno(dw.parseULEB128(p));
+		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
-		fs.regs[reg].N = dw.parseSLEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = DwarfFile.parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_offset_extended_sf: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 
 	    case DW_CFA_val_offset:
-		reg = state.mapDwarfRegno(dw.parseULEB128(p));
+		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.valOffsetN;
-		fs.regs[reg].N = dw.parseULEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = DwarfFile.parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_val_offset: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 
 	    case DW_CFA_register:
-		reg = state.mapDwarfRegno(dw.parseULEB128(p));
-		fs.regs[reg] = fs.regs[state.mapDwarfRegno(dw.parseULEB128(p))];
+		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		fs.regs[reg] = fs.regs[state.mapDwarfRegno(DwarfFile.parseULEB128(p))];
 		debug(unwind)
 		    writefln("DW_CFA_register: reg=%d", reg);
 		break;
@@ -3509,7 +3543,7 @@ private:
 		break;
 
 	    case DW_CFA_restore_extended:
-		reg = state.mapDwarfRegno(dw.parseULEB128(p));
+		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
 		fs.regs[reg] = cieFs.regs[state.mapDwarfRegno(op & 0x3f)];
 		debug(unwind)
 		    writefln("DW_CFA_restore_extended: reg=%d", reg);
@@ -3523,7 +3557,7 @@ private:
 		throw new Exception("DW_CFA_GNU_window_save");
 
 	    case DW_CFA_GNU_args_size:
-		dw.parseULEB128(p);
+		DwarfFile.parseULEB128(p);
 		break;
 
 	    case DW_CFA_GNU_negative_offset_extended:
