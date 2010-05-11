@@ -97,7 +97,6 @@ class RemoteThread: TargetThread
 	    uint n;
 	    try {
 		n = state_.registerWidth(regno);
-		writefln("%d: %d, %d", regno, off, n);
 		off += n;
 		if (regs[0] != 'x') {
 		    auto regval = target_.decodeBytes(regs[0..2*n]);
