@@ -811,8 +811,27 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	sa.sa_flags = 0;
 	sigaction(SIGINT, &sa, null);
 
-	if (core_)
+	if (core_) {
 	    stopped();
+	} else {
+	    /*
+	     * Try to set source line at main().
+	     */
+	    auto di = modules_[0].debugInfo;
+	    if (di) {
+		LineEntry[] lines;
+		if (di.findLineByFunction("_Dmain", lines)
+		    && di.findLanguage(lines[0].address)
+		   	 == DLanguage.instance) {
+		    SourceFile sf = findFile(lines[0].fullname);
+		    currentSourceFile_ = sf;
+		    currentSourceLine_ = lines[0].line;
+		} else if (di.findLineByFunction("main", lines)) {
+		    SourceFile sf = findFile(lines[0].fullname);
+		    setCurrentSourceLine(sf, lines[0].line);
+		}
+	    }
+	}
 
 	while (!quit_ && (buf = inputline(prompt_)) != null) {
 	    int ac;
@@ -1283,6 +1302,27 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		}
 		if (!findDebugInfo(t, di)) {
 		    /*
+		     * See if the machine state can unwind and if so,
+		     * we can set a return breakpoint.
+		     */
+		    auto fde = t.parsePrologue(t.pc);
+		    if (fde) {
+			debug (step)
+			    writefln("stepping over call to function with no debug info at %#x",t.pc);
+			MachineState ns = fde.unwind(t);
+			clearStepBreakpoints();
+			TargetAddress retpc = ns.pc;
+			debug (step)
+			    writefln("return breakpoint at %#x", retpc);
+			setStepBreakpoint(retpc);
+			target_.cont();
+			target_.wait();
+			debug (step)
+			    stoppedAt("stopped at", t.pc);
+			resetStep = true;
+			goto nextStep;
+		    }
+		    /*
 		     * If we step into something without debug info,
 		     * just continue until we hit the step breakpoint.
 		     */
@@ -1325,7 +1365,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 				break;
 			    debug (step)
 				if (frameLoc.address(t) < frame)
-				    writefln("stopped at inner frame %#x - continuing", frameLoc.address(s));
+				    writefln("stopped at inner frame %#x - continuing", frameLoc.address(t));
 			} while (target_ && frameLoc.address(t) != frame);
 			resetStep = true;
 		    } else {
@@ -1333,6 +1373,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 			break;
 		    }
 		}
+nextStep:
 		if (t.pc < startpc || t.pc >= stoppc) {
 		    debug (step)
 			writefln("stepped outside range %#x..%#x", startpc, stoppc);
