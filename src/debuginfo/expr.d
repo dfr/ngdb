@@ -82,7 +82,7 @@ class CastExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value expr = expr_.eval(sc, state).toValue(state);
+	    Value expr = expr_.eval(sc, state).toValue;
 	    if (!type_.coerce(state, expr))
 		throw new EvalException("Incompatible types for cast");
 	    return expr;
@@ -270,7 +270,7 @@ class LengthExpr: UnaryExpr
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value expr = expr_.eval(sc, state).toValue(state);
+	    Value expr = expr_.eval(sc, state).toValue;
 	    ArrayType aTy = cast(ArrayType) expr.type.underlyingType;
 	    DArrayType daTy = cast(DArrayType) expr.type.underlyingType;
 	    ulong minIndex, maxIndex;
@@ -311,7 +311,7 @@ class PtrExpr: UnaryExpr
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value expr = expr_.eval(sc, state).toValue(state);
+	    Value expr = expr_.eval(sc, state).toValue;
 	    ArrayType aTy = cast(ArrayType) expr.type.underlyingType;
 	    DArrayType daTy = cast(DArrayType) expr.type.underlyingType;
 	    ulong minIndex, maxIndex;
@@ -357,7 +357,7 @@ class SizeofExpr: UnaryExpr
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value expr = expr_.eval(sc, state).toValue(state);
+	    Value expr = expr_.eval(sc, state).toValue;
 	    ubyte[4] val;
 	    state.writeInteger(expr.type.byteWidth, val);
 	    auto ty = lang_.integerType("size_t", false, TS4);
@@ -405,7 +405,7 @@ class AddressOfExpr: UnaryExpr
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value expr = expr_.eval(sc, state).toValue(state);
+	    Value expr = expr_.eval(sc, state).toValue;
 	    if (expr.loc.hasAddress(state)) {
 		ulong addr = expr.loc.address(state);
 		ubyte[] val;
@@ -434,7 +434,7 @@ class DereferenceExpr: UnaryExpr
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value expr = expr_.eval(sc, state).toValue(state);
+	    Value expr = expr_.eval(sc, state).toValue;
 	    PointerType ptrTy = cast(PointerType) expr.type.underlyingType;
 	    if (!ptrTy)
 		throw new EvalException("Attempting to dereference a non-pointer");
@@ -459,7 +459,7 @@ template IntegerUnaryExpr(string op, string name)
 	    }
 	    DebugItem eval(Scope sc, MachineState state)
 	    {
-		Value expr = expr_.eval(sc, state).toValue(state);
+		Value expr = expr_.eval(sc, state).toValue;
 		if (!expr.type.isIntegerType)
 		    throw new EvalException(
 			format("Attempting to %s a value of type %s",
@@ -492,7 +492,7 @@ class LogicalNegateExpr: IntegerUnaryExpr!("!", "logically negate")
     override {
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value expr = expr_.eval(sc, state).toValue(state);
+	    Value expr = expr_.eval(sc, state).toValue;
 	    PointerType ptrTy = cast(PointerType) expr.type.underlyingType;
 	    if (!ptrTy)
 		return super.eval(sc, state);
@@ -534,11 +534,11 @@ class PostIncrementExpr: UnaryExpr
 	     */
 	    BinaryExpr b = cast(BinaryExpr) expr_;
 	    assert(b);
-	    Value left = b.left_.eval(sc, state).toValue(state);
+	    Value left = b.left_.eval(sc, state).toValue;
 	    if (!left.loc.isLval(state))
 		throw new EvalException("Not an l-value in post-increment");
 	    Value res = left.dup(state);
-	    Value newval = b.eval(sc, state).toValue(state);
+	    Value newval = b.eval(sc, state).toValue;
 	    ubyte[] v = newval.loc.readValue(state);
 	    left.loc.writeValue(state, v);
 	    return res;
@@ -563,10 +563,10 @@ class AssignExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value left = left_.eval(sc, state).toValue(state);
+	    Value left = left_.eval(sc, state).toValue;
 	    if (!left.loc.isLval(state))
 		throw new EvalException("Not an l-value in assignment");
-	    Value right = right_.eval(sc, state).toValue(state);
+	    Value right = right_.eval(sc, state).toValue;
 	    if (left.type != right.type) {
 		if (!left.type.coerce(state, right))
 		    throw new EvalException("Incompatible types in assignment");
@@ -613,7 +613,7 @@ template IntegerBinaryExpr(string op, string name)
 	    }
 	    DebugItem eval(Scope sc, MachineState state)
 	    {
-		Value left = left_.eval(sc, state).toValue(state);
+		Value left = left_.eval(sc, state).toValue;
 		if (!left.type.isIntegerType)
 		    throw new EvalException(
 			format("Attempting to %s a value of type %s",
@@ -621,7 +621,7 @@ template IntegerBinaryExpr(string op, string name)
 			       left.type.toString));
 		ulong lval = state.readInteger(left.loc.readValue(state));
 
-		Value right = right_.eval(sc, state).toValue(state);
+		Value right = right_.eval(sc, state).toValue;
 		if (!right.type.isIntegerType)
 		    throw new EvalException(
 			format("Attempting to %s a value of type %s",
@@ -665,13 +665,13 @@ template NumericBinaryExpr(string op, string name)
 	    }
 	    DebugItem eval(Scope sc, MachineState state)
 	    {
-		Value left = left_.eval(sc, state).toValue(state);
+		Value left = left_.eval(sc, state).toValue;
 		if (!left.type.isNumericType)
 		    throw new EvalException(
 			format("Attempting to %s a value of type %s",
 			       name,
 			       left.type.toString));
-		Value right = right_.eval(sc, state).toValue(state);
+		Value right = right_.eval(sc, state).toValue;
 		if (!right.type.isNumericType)
 		    throw new EvalException(
 			format("Attempting to %s a value of type %s",
@@ -758,8 +758,8 @@ class CommaExpr: BinaryExpr
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value left = left_.eval(sc, state).toValue(state);
-	    Value right = right_.eval(sc, state).toValue(state);
+	    Value left = left_.eval(sc, state).toValue;
+	    Value right = right_.eval(sc, state).toValue;
 	    return right;
 	}
     }
@@ -774,12 +774,12 @@ class AddExpr: NumericBinaryExpr!("+", "add")
     override {
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value left = left_.eval(sc, state).toValue(state);
+	    Value left = left_.eval(sc, state).toValue;
 	    PointerType ptrTy = cast(PointerType) left.type.underlyingType;
 	    if (!ptrTy)
 		return super.eval(sc, state);
 
-	    Value right = right_.eval(sc, state).toValue(state);
+	    Value right = right_.eval(sc, state).toValue;
 	    if (!right.type.isIntegerType)
 		throw new EvalException("Pointer arithmetic with non-integer");
 
@@ -803,12 +803,12 @@ class SubtractExpr: NumericBinaryExpr!("-", "add")
     override {
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value left = left_.eval(sc, state).toValue(state);
+	    Value left = left_.eval(sc, state).toValue;
 	    PointerType ptrTy = cast(PointerType) left.type.underlyingType;
 	    if (!ptrTy)
 		return super.eval(sc, state);
 
-	    Value right = right_.eval(sc, state).toValue(state);
+	    Value right = right_.eval(sc, state).toValue;
 	    PointerType rptrTy = cast(PointerType) right.type.underlyingType;
 	    if (!rptrTy && !right.type.isIntegerType)
 		throw new EvalException("Pointer arithmetic with non-integer or non-pointer");
@@ -850,7 +850,7 @@ class IndexExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value base = base_.eval(sc, state).toValue(state);
+	    Value base = base_.eval(sc, state).toValue;
 
 	    ArrayType aTy = cast(ArrayType) base.type.underlyingType;
 	    DArrayType daTy = cast(DArrayType) base.type.underlyingType;
@@ -888,7 +888,7 @@ class IndexExpr: ExprBase
 		throw new EvalException("Expected array or pointer for index expression");
 	    }
 
-	    Value index = index_.eval(sc, state).toValue(state);
+	    Value index = index_.eval(sc, state).toValue;
 	    IntegerType intTy = cast(IntegerType) index.type.underlyingType;
 	    if (!index.type.isIntegerType) {
 		throw new EvalException("Expected integer for index expression");
@@ -929,7 +929,7 @@ class SliceExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value base = base_.eval(sc, state).toValue(state);
+	    Value base = base_.eval(sc, state).toValue;
 
 	    ArrayType aTy = cast(ArrayType) base.type.underlyingType;
 	    DArrayType daTy = cast(DArrayType) base.type.underlyingType;
@@ -967,7 +967,7 @@ class SliceExpr: ExprBase
 		throw new EvalException("Expected array or pointer for index expression");
 	    }
 
-	    Value start = start_.eval(sc, state).toValue(state);
+	    Value start = start_.eval(sc, state).toValue;
 	    if (!start.type.isIntegerType)
 		throw new EvalException(
 		    "Expected integer for slice expression");
@@ -976,7 +976,7 @@ class SliceExpr: ExprBase
 		throw new EvalException(
 		    format("Index %d out of array bounds", si));
 
-	    Value end = end_.eval(sc, state).toValue(state);
+	    Value end = end_.eval(sc, state).toValue;
 	    if (!end.type.isIntegerType)
 		throw new EvalException(
 		    "Expected integer for slice expression");
@@ -1031,7 +1031,7 @@ class MemberExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value base = base_.eval(sc, state).toValue(state);
+	    Value base = base_.eval(sc, state).toValue;
 	    CompoundType cTy = cast(CompoundType) base.type.underlyingType;
 	    if (!cTy)
 		throw new EvalException("Not a compound type");
@@ -1059,7 +1059,7 @@ class DMemberExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value base = base_.eval(sc, state).toValue(state);
+	    Value base = base_.eval(sc, state).toValue;
 	    PointerType ptrTy = cast(PointerType) base.type.underlyingType;
 	    if (ptrTy) {
 		CompoundType cTy = cast(CompoundType) ptrTy.baseType.underlyingType;
@@ -1098,7 +1098,7 @@ class PointsToExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value base = base_.eval(sc, state).toValue(state);
+	    Value base = base_.eval(sc, state).toValue;
 	    PointerType ptrTy = cast(PointerType) base.type.underlyingType;
 	    if (!ptrTy)
 		throw new EvalException("Not a pointer");
@@ -1134,7 +1134,7 @@ class IfElseExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value cond = cond_.eval(sc, state).toValue(state);
+	    Value cond = cond_.eval(sc, state).toValue;
 	    if (!cond.type.isIntegerType)
 		throw new EvalException("Condition value is not an integer");
 	    if (state.readInteger(cond.loc.readValue(state)))
@@ -1172,7 +1172,7 @@ class CallExpr: ExprBase
 	}
 	DebugItem eval(Scope sc, MachineState state)
 	{
-	    Value func = func_.eval(sc, state).toValue(state);
+	    Value func = func_.eval(sc, state).toValue;
 	    auto fTy = cast(FunctionType) func.type;
 	    if (!fTy) {
 		auto pTy = cast(PointerType) func.type;
@@ -1193,7 +1193,7 @@ class CallExpr: ExprBase
 	    Value[] args;
 	    args.length = args_.length;
 	    foreach (i, arg; args_) {
-		auto argVal = arg.eval(sc, state).toValue(state);
+		auto argVal = arg.eval(sc, state).toValue;
 		if (argTypes[i].coerce(state, argVal))
 		    args[i] = argVal;
 		else
