@@ -925,8 +925,6 @@ class X86State: MachineState
 		}
 		break;
 	    }
-	    if (fdeIns.length == 0)
-		return null;
 	    auto fde = new FDE;
 	    fde.cie = cie;
 	    fde.initialLocation = func;
