@@ -824,8 +824,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 		    && di.findLanguage(lines[0].address)
 		   	 == DLanguage.instance) {
 		    SourceFile sf = findFile(lines[0].fullname);
-		    currentSourceFile_ = sf;
-		    currentSourceLine_ = lines[0].line;
+		    setCurrentSourceLine(sf, lines[0].line);
 		} else if (di.findLineByFunction("main", lines)) {
 		    SourceFile sf = findFile(lines[0].fullname);
 		    setCurrentSourceLine(sf, lines[0].line);
