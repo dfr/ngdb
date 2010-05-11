@@ -32,6 +32,7 @@ import objfile.objfile;
 import debuginfo.debuginfo;
 import debuginfo.language;
 import debuginfo.types;
+import debuginfo.utils;
 import machine.machine;
 static import std.path;
 import std.demangle;
@@ -1592,42 +1593,6 @@ private:
 	return cast(TargetSize) lv;
     }
 
-    static ulong parseULEB128(ref char* p)
-    {
-	ulong v = 0;
-	int shift = 0;
-	bool done = false;
-	char b;
-
-	while (!done) {
-	    b = *p++;
-	    v |= (b & 0x7f) << shift;
-	    shift += 7;
-	    if ((b & 0x80) == 0)
-		done = true;
-	}
-	return v;
-    }
-
-    static long parseSLEB128(ref char* p)
-    {
-	long v = 0;
-	int shift = 0;
-	bool done = false;
-	char b;
-
-	while (!done) {
-	    b = *p++;
-	    v |= (b & 0x7f) << shift;
-	    shift += 7;
-	    if ((b & 0x80) == 0)
-		done = true;
-	}
-	if (shift < 64 && (b & 0x40))
-	    v |= -(1 << shift);	// sign extend
-	return v;
-    }
-
     Objfile obj_;
     char[] debugSections_[string];
     char[] strtab_;
@@ -1829,7 +1794,7 @@ struct Expr
 	    if (op >= DW_OP_breg0 && op <= DW_OP_breg31) {
 		uint regno = state.mapDwarfRegno(op - DW_OP_breg0);
 		v = cast(long) state.readIntRegister(regno)
-		    + dw.parseSLEB128(p);
+		    + parseSLEB128(p);
 		stack.push(v);
 		continue;
 	    }
@@ -1871,11 +1836,11 @@ struct Expr
 		break;
 
 	    case DW_OP_constu:
-		stack.push(dw.parseULEB128(p));
+		stack.push(parseULEB128(p));
 		break;
 
 	    case DW_OP_consts:
-		stack.push(dw.parseSLEB128(p));
+		stack.push(parseSLEB128(p));
 		break;
 
 	    case DW_OP_fbreg:
@@ -1884,7 +1849,7 @@ struct Expr
 		    break;
 		}
 		Location frame;
-		v = dw.parseSLEB128(p);
+		v = parseSLEB128(p);
 		if (cu.parent.findFrameBase(state, frame))
 		    stack.push(frame.address(state) + v);
 		else
@@ -1892,9 +1857,9 @@ struct Expr
 		break;
 
 	    case DW_OP_bregx:
-		uint regno = state.mapDwarfRegno(dw.parseULEB128(p));
+		uint regno = state.mapDwarfRegno(parseULEB128(p));
 		v = cast(long) state.readIntRegister(regno)
-		    + dw.parseSLEB128(p);
+		    + parseSLEB128(p);
 		stack.push(v);
 		break;
 
@@ -2012,7 +1977,7 @@ struct Expr
 
 	    case DW_OP_plus_uconst:
 		v = stack.pop;
-		stack.push(addrWrap(v + dw.parseULEB128(p)));
+		stack.push(addrWrap(v + parseULEB128(p)));
 		break;
 
 	    case DW_OP_shl:
@@ -2153,7 +2118,7 @@ struct Expr
 		loc = new RegisterLocation(regno, length);
 	    } else if (op == DW_OP_regx) {
 		p++;
-		uint regno = state.mapDwarfRegno(dw.parseULEB128(p));
+		uint regno = state.mapDwarfRegno(parseULEB128(p));
 		loc = new RegisterLocation(regno, length);
 	    } else {
 		ValueStack stack;
@@ -2190,15 +2155,15 @@ struct Expr
 		ubyte[] t;
 		switch (op) {
 		case DW_OP_piece:
-		    auto l = dw.parseULEB128(p);
+		    auto l = parseULEB128(p);
 		    loc.length = cast(TargetSize) l;
 		    cloc.addPiece(loc, cast(TargetSize) l);
 		    break;
 
 		case DW_OP_bit_piece:
 		    static if (false) {
-			auto nbits = dw.parseULEB128(p);
-			auto boff = dw.parseULEB128(p);
+			auto nbits = parseULEB128(p);
+			auto boff = parseULEB128(p);
 
 			ulong getVal(ubyte[] t)
 			{
@@ -2336,7 +2301,7 @@ class AttributeValue
 	    break;
 
 	case DW_FORM_block:
-	    b.length = cast(TargetSize) dw.parseULEB128(p);
+	    b.length = cast(TargetSize) parseULEB128(p);
 	    goto readBlock;
 
 	case DW_FORM_block1:
@@ -2386,7 +2351,7 @@ class AttributeValue
 	    break;
 
 	case DW_FORM_sdata:
-	    l = dw.parseSLEB128(p);
+	    l = parseSLEB128(p);
 	    break;
 
 	case DW_FORM_strp:
@@ -2400,11 +2365,11 @@ class AttributeValue
 
 	case DW_FORM_udata:
 	case DW_FORM_ref_udata:
-	    ul = dw.parseULEB128(p);
+	    ul = parseULEB128(p);
 	    break;
 
 	case DW_FORM_indirect:
-	    form = dw.parseULEB128(p);
+	    form = parseULEB128(p);
 	    goto again;
 	}
     }
@@ -2537,12 +2502,12 @@ class DIE
 
 	auto dw = cu_.parent;
 	char* abbrevp = abbrevTable[abbrevCode];
-	tag_ = dw.parseULEB128(abbrevp);
+	tag_ = parseULEB128(abbrevp);
 	auto hasChildren = *abbrevp++ == DW_CHILDREN_yes;
 
 	for (;;) {
-	    uint at = dw.parseULEB128(abbrevp);
-	    uint form = dw.parseULEB128(abbrevp);
+	    uint at = parseULEB128(abbrevp);
+	    uint form = parseULEB128(abbrevp);
 	    if (!at)
 		break;
 	    AttributeValue val = new AttributeValue(dw, form, diep,
@@ -2566,7 +2531,7 @@ class DIE
 	}
 	if (hasChildren) {
 	    char* p = diep;
-	    while ((abbrevCode = dw.parseULEB128(diep)) != 0) {
+	    while ((abbrevCode = parseULEB128(diep)) != 0) {
 		DIE die = new DIE(cu, this, base, diep,
 				  abbrevCode, abbrevTable,
 				  addrlen, strtab);
@@ -3433,37 +3398,37 @@ private:
 		break;
 
 	    case DW_CFA_def_cfa:
-		fs.cfaReg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
-		fs.cfaOffset = DwarfFile.parseULEB128(p);
+		fs.cfaReg = state.mapDwarfRegno(parseULEB128(p));
+		fs.cfaOffset = parseULEB128(p);
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_sf:
-		fs.cfaReg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
-		fs.cfaOffset = DwarfFile.parseSLEB128(p) * cie.dataAlign;
+		fs.cfaReg = state.mapDwarfRegno(parseULEB128(p));
+		fs.cfaOffset = parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_sf: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_register:
-		fs.cfaReg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		fs.cfaReg = state.mapDwarfRegno(parseULEB128(p));
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_register: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_offset:
-		fs.cfaOffset = DwarfFile.parseULEB128(p);
+		fs.cfaOffset = parseULEB128(p);
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_offset: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
 		break;
 
 	    case DW_CFA_def_cfa_offset_sf:
-		fs.cfaOffset = DwarfFile.parseSLEB128(p) * cie.dataAlign;
+		fs.cfaOffset = parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_def_cfa_offset_sf: cfa=%d, off=%d",
 			     fs.cfaReg, fs.cfaOffset);
@@ -3473,14 +3438,14 @@ private:
 		throw new Exception("no support for CFA expressions");
 
 	    case DW_CFA_undefined:
-		reg = DwarfFile.parseULEB128(p);
+		reg = parseULEB128(p);
 		fs.regs[reg].rule = RLoc.Rule.undefined;
 		debug(unwind)
 		    writefln("DW_CFA_undefined: reg=%d", reg);
 		break;
 
 	    case DW_CFA_same_value:
-		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		reg = state.mapDwarfRegno(parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.sameValue;
 		debug(unwind)
 		    writefln("DW_CFA_same_value: reg=%d", reg);
@@ -3489,42 +3454,42 @@ private:
 	    case DW_CFA_offset:
 		reg = state.mapDwarfRegno(op & 0x3f);
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
-		fs.regs[reg].N = DwarfFile.parseULEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_offset: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 			
 	    case DW_CFA_offset_extended:
-		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		reg = state.mapDwarfRegno(parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
-		fs.regs[reg].N = DwarfFile.parseULEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_offset_extended: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 
 	    case DW_CFA_offset_extended_sf:
-		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		reg = state.mapDwarfRegno(parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.offsetN;
-		fs.regs[reg].N = DwarfFile.parseSLEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = parseSLEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_offset_extended_sf: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 
 	    case DW_CFA_val_offset:
-		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		reg = state.mapDwarfRegno(parseULEB128(p));
 		fs.regs[reg].rule = RLoc.Rule.valOffsetN;
-		fs.regs[reg].N = DwarfFile.parseULEB128(p) * cie.dataAlign;
+		fs.regs[reg].N = parseULEB128(p) * cie.dataAlign;
 		debug(unwind)
 		    writefln("DW_CFA_val_offset: reg=%d, off=%d",
 			     reg, fs.regs[reg].N);
 		break;
 
 	    case DW_CFA_register:
-		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
-		fs.regs[reg] = fs.regs[state.mapDwarfRegno(DwarfFile.parseULEB128(p))];
+		reg = state.mapDwarfRegno(parseULEB128(p));
+		fs.regs[reg] = fs.regs[state.mapDwarfRegno(parseULEB128(p))];
 		debug(unwind)
 		    writefln("DW_CFA_register: reg=%d", reg);
 		break;
@@ -3543,7 +3508,7 @@ private:
 		break;
 
 	    case DW_CFA_restore_extended:
-		reg = state.mapDwarfRegno(DwarfFile.parseULEB128(p));
+		reg = state.mapDwarfRegno(parseULEB128(p));
 		fs.regs[reg] = cieFs.regs[state.mapDwarfRegno(op & 0x3f)];
 		debug(unwind)
 		    writefln("DW_CFA_restore_extended: reg=%d", reg);
@@ -3557,7 +3522,7 @@ private:
 		throw new Exception("DW_CFA_GNU_window_save");
 
 	    case DW_CFA_GNU_args_size:
-		DwarfFile.parseULEB128(p);
+		parseULEB128(p);
 		break;
 
 	    case DW_CFA_GNU_negative_offset_extended:
