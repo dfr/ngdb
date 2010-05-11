@@ -28,6 +28,7 @@ module target.target;
 import debuginfo.debuginfo;
 import debuginfo.dwarf;
 import debuginfo.types;
+import debuginfo.unwind;
 import objfile.objfile;
 import objfile.elf;
 import machine.machine;

@@ -27,10 +27,10 @@
 module machine.x86;
 import machine.machine;
 import debuginfo.debuginfo;
-import debuginfo.dwarf;
 import debuginfo.expr;
 import debuginfo.language;
 import debuginfo.types;
+import debuginfo.unwind;
 private import machine.x86dis;
 import target.target;
 import sys.ptrace;

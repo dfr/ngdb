@@ -27,7 +27,7 @@
 module machine.machine;
 import target.target;
 import debuginfo.debuginfo;
-import debuginfo.dwarf;
+import debuginfo.unwind;
 import debuginfo.types;
 version(tangobos) import std.compat;
 import std.bitarray;
