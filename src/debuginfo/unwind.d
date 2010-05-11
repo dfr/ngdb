@@ -84,7 +84,6 @@ class CIE
 
 class FDE
 {
-    bool is64;
     CIE cie;
     ulong initialLocation;
     ulong addressRange;
@@ -187,7 +186,7 @@ class FDE
 	    case RLoc.Rule.offsetN:
 		off = rl.N;
 		b = state.readMemory(cast(TargetAddress) (cfa + off),
-                                     cast(TargetSize) (is64 ? 8 : 4));
+                                     state.pointerWidth);
 		debug (unwind)
 		    writefln("reg%d at CFA-%d", regno, -off);
 		newState.writeRegister(regno, b);
@@ -248,7 +247,7 @@ private:
 
 	TargetAddress parseAddress(ref char* p)
 	{
-	    if (is64)
+	    if (state.pointerWidth == 8)
 		return parseULong(p);
 	    else
 		return parseUInt(p);
