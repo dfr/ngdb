@@ -3241,6 +3241,75 @@ class ListCommand: Command
     uint sourceLine_;
 }
 
+class RESearchCommand: Command
+{
+    static this()
+    {
+	Debugger.registerCommand(new RESearchCommand);
+    }
+
+    override {
+	string name()
+	{
+	    return "re-search";
+	}
+
+	string description()
+	{
+	    return "Search source file contents using regexp";
+	}
+
+	void run(Debugger db, string args)
+	{
+	    SourceFile sf = sourceFile_;
+	    uint line = sourceLine_ + 1;
+	    if (find(args, ' ') >= 0) {
+		db.pagefln("usage: search [regexp]");
+		return;
+	    }
+	    if (args.length == 0) {
+                if (regexp_.length == 0) {
+                    db.pagefln("No previous search expression");
+                    return;
+                }
+                args = regexp_;
+            }
+
+	    if (!sf) {
+		db.pagefln("No current source file");
+		return;
+	    }
+
+	    try {
+		while (line < sf.length) {
+		    if (std.regexp.find(sf[line], args) >= 0)
+			break;
+		    line++;
+		}
+	    } catch (std.regexp.RegExpException ree) {
+		db.pagefln("Regular expresson syntax error: %s", ree.msg);
+		return;
+	    }
+            if (line == sf.length) {
+                db.pagefln("Not found");
+                return;
+            }
+            db.displaySourceLine(sf, line);
+	    db.setCurrentSourceLine(sf, line);
+	    regexp_ = args;
+	}
+	void onSourceLine(Debugger db, SourceFile sf, uint line)
+	{
+	    sourceFile_ = sf;
+	    sourceLine_ = line;
+	}
+    }
+
+    SourceFile sourceFile_;
+    uint sourceLine_;
+    string regexp_;
+}
+
 class SearchCommand: Command
 {
     static this()
@@ -3262,30 +3331,36 @@ class SearchCommand: Command
 	void run(Debugger db, string args)
 	{
 	    SourceFile sf = sourceFile_;
-	    uint line = sourceLine_;
+	    uint line = sourceLine_ + 1;
 	    if (find(args, ' ') >= 0) {
-		db.pagefln("usage: search [regexp]");
+		db.pagefln("usage: search [string]");
 		return;
 	    }
 	    if (args.length == 0) {
-                if (regexp_.length == 0) {
+                if (prevSearch_.length == 0) {
                     db.pagefln("No previous search expression");
                     return;
                 }
-                args = regexp_;
-            }
+                args = prevSearch_;
+	    }
 
-            while (line < sf.length) {
-                if (std.regexp.find(sf[line], args) >= 0)
-                    break;
-                line++;
-            }
+	    if (!sf) {
+		db.pagefln("No current source file");
+		return;
+	    }
+
+	    while (line < sf.length) {
+		if (std.string.find(sf[line], args) >= 0)
+		    break;
+		line++;
+	    }
             if (line == sf.length) {
                 db.pagefln("Not found");
                 return;
             }
             db.displaySourceLine(sf, line);
 	    db.setCurrentSourceLine(sf, line);
+	    prevSearch_ = args;
 	}
 	void onSourceLine(Debugger db, SourceFile sf, uint line)
 	{
@@ -3296,7 +3371,7 @@ class SearchCommand: Command
 
     SourceFile sourceFile_;
     uint sourceLine_;
-    string regexp_;
+    string prevSearch_;
 }
 
 class DefineCommand: Command
