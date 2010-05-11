@@ -65,7 +65,7 @@ class TypeBase: Type
     {
 	return toString;
     }
-    Value toValue(MachineState)
+    Value toValue()
     {
 	throw new EvalException(format("%s is not a value", toString));
     }

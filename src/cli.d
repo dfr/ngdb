@@ -270,7 +270,7 @@ private class Breakpoint: TargetBreakpointListener
 	    auto f = db_.currentFrame;
 	    auto sc = f.scope_;
 	    try {
-		auto v = expr_.eval(sc, t).toValue(t);
+		auto v = expr_.eval(sc, t).toValue;
 		if (v.type.isIntegerType)
 		    if (!t.readInteger(v.loc.readValue(t)))
 			return false;
@@ -1596,7 +1596,7 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 
 	try {
 	    auto e = lang.parseExpr(expr, sc);
-	    auto v = e.eval(sc, s).toValue(s);
+	    auto v = e.eval(sc, s).toValue;
 	    state = s;
 	    return v;
 	} catch (EvalException ex) {
@@ -3111,7 +3111,7 @@ class ExamineCommand: Command
 
 		try {
 		    auto e = lang.parseExpr(expr, sc);
-		    auto v = e.eval(sc, s).toValue(s);
+		    auto v = e.eval(sc, s).toValue;
 		    auto pTy = cast(PointerType) v.type;
 		    auto fTy = cast(FunctionType) v.type;
 		    if (pTy || v.type.isIntegerType)

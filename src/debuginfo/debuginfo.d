@@ -59,7 +59,7 @@ interface DebugItem
 {
     string toString();
     string toString(string, MachineState);
-    Value toValue(MachineState);
+    Value toValue();
 }
 
 interface Scope
@@ -887,7 +887,7 @@ class Value: DebugItem
 		return "<invalid>";
 	    }
 	}
-	Value toValue(MachineState)
+	Value toValue()
 	{
 	    return this;
 	}
@@ -931,7 +931,7 @@ class Variable: DebugItem
 		return toString;
 	}
 
-	Value toValue(MachineState)
+	Value toValue()
 	{
 	    return value_;
 	}
@@ -974,7 +974,7 @@ class LexicalScope: DebugItem, Scope
 	{
 	    return "";
 	}
-	Value toValue(MachineState state)
+	Value toValue()
 	{
 	    throw new EvalException("not a value");
 	}
@@ -1090,7 +1090,7 @@ class Function: DebugItem, Scope
 	    s ~= ")";
 	    return s;
 	}
-	Value toValue(MachineState state)
+	Value toValue()
 	{
 	    FunctionType ft = new FunctionType(lang_);
 	    ft.returnType(returnType_);
