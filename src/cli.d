@@ -1102,9 +1102,10 @@ class Debugger: TargetListener, TargetBreakpointListener, Scope
 	    currentFrame_ = topFrame_ =
 		new Frame(this, 0, null, null, null, t);
 	    TargetAddress tpc = t.pc;
-	    writefln("%s:\t%s", lookupAddress(tpc),
+	    writefln("%s:\t%s", lookupAddress(t.pc),
 		     t.disassemble(tpc, &lookupAddress));
 	}
+	executeMacro(stopCommands_);
     }
 
     void displaySourceLine(MachineState s)
@@ -1460,7 +1461,7 @@ nextStep:
 	stopped();
 	if (currentFrame.func_) {
 	    TargetAddress tpc = t.pc;
-	    pagefln("%s:\t%s", lookupAddress(tpc),
+	    pagefln("%s:\t%s", lookupAddress(t.pc),
 		    t.disassemble(tpc, &lookupAddress));
 	}
     }
@@ -1543,6 +1544,11 @@ nextStep:
     Frame topFrame()
     {
 	return topFrame_;
+    }
+
+    void setStopCommands(string[] cmds)
+    {
+	stopCommands_ = cmds;
     }
 
     Frame currentFrame()
@@ -1887,6 +1893,7 @@ version (editline) {
     uint stoppedSourceLine_;
     SourceFile currentSourceFile_;
     uint currentSourceLine_;
+    string[] stopCommands_;
     uint nextBPID_;
     Value[] valueHistory_;
     Value[string] userVars_;
@@ -2589,6 +2596,40 @@ class InfoBreakCommand: Command
 	    Breakpoint.printHeader;
 	    foreach (b; db.breakpoints_)
 		b.print;
+	}
+    }
+}
+
+class StopCommand: Command
+{
+    static this()
+    {
+	Debugger.registerCommand(new StopCommand);
+    }
+
+    override {
+	string name()
+	{
+	    return "stop";
+	}
+
+	string description()
+	{
+	    return "Set commands to execute when program stops";
+	}
+
+	void run(Debugger db, string args)
+	{
+	    if (find(args, ' ') >= 0) {
+		db.pagefln("usage: stop");
+		return;
+	    }
+            
+            if (db.interactive)
+                db.pagefln(
+	"Enter commands to execute when program stops, finish with \"end\"");
+            string[] cmds = db.readStatementBody;
+            db.setStopCommands(cmds);
 	}
     }
 }
