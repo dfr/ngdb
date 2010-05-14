@@ -3,10 +3,10 @@
 .PHONY:	clean
 
 CC=cc
-CFLAGS=-g -msse3 -mfpmath=sse
+CFLAGS=-g -msse3 -mfpmath=sse -O
 
 CXX=c++
-CXXFLAGS=-g -msse3 -mfpmath=sse
+CXXFLAGS=-g -msse3 -mfpmath=sse -O
 
 SelectOption(question, options, default) =
         if $(defined take_defaults)
